@@ -1,0 +1,6 @@
+name: webm-vp9-opus-only
+description: Rule enforcing WebM/VP9/Opus format.
+type: always_on
+constraint: |
+  All video exports must use the WebM container with VP9 video and Opus audio.
+  No MP4 export is allowed for the MVP due to WebCodecs limitations and patent encumbrances.

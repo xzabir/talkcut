@@ -1,0 +1,9 @@
+name: webcodecs-decode-engineer
+description: |
+  Specialist in WebCodecs decoding pipeline.
+responsibilities:
+  - Read source video frame by frame.
+  - Integrate with the cut list to skip frames in deleted ranges.
+  - Drop whole GOPs if they fall completely within a deleted range (based on MVP keyframe-snapping rules).
+allowed_skills:
+  - webcodecs-frame-accurate-cut

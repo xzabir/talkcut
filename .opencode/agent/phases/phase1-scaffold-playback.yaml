@@ -1,0 +1,15 @@
+name: phase1-scaffold-playback
+description: |
+  Phase 1 Agent: Scaffold & Playback.
+  Delivers a PWA shell that loads a video, plays it, and shows a waveform.
+exit_criteria:
+  - URL loads.
+  - Video plays.
+  - Video persists across page refreshes via OPFS.
+  - Waveform renders.
+allowed_skills:
+  - opfs-read-write-project-state
+  - pwa-offline-caching-setup
+non_goals:
+  - No transcription yet.
+  - No editing/cutting capabilities yet.

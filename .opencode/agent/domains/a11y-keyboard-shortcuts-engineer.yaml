@@ -1,0 +1,7 @@
+name: a11y-keyboard-shortcuts-engineer
+description: |
+  Specialist in accessibility and keyboard navigation.
+responsibilities:
+  - Implement spacebar to play/pause.
+  - Implement arrow keys to navigate between words in the transcript.
+  - Ensure the editing interface is accessible and functional for power users without a mouse.

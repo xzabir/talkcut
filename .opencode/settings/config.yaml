@@ -1,0 +1,12 @@
+workspace:
+  name: "Deep Agents Workspace"
+  version: "1.0.0"
+  description: "Production-grade environment for researching, planning, and building open-source tools."
+
+agents:
+  root: "AGENTS.md"
+  specialists_dir: "agents/"
+
+templates_dir: "templates/"
+skills_dir: "skills/"
+workflows_dir: "workflows/"

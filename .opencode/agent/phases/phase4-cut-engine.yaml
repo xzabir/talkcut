@@ -1,0 +1,16 @@
+name: phase4-cut-engine
+description: |
+  Phase 4 Agent: Cut Engine.
+  Delivers delete text -> cut video functionality, bulk filler word removal, and trim silence.
+exit_criteria:
+  - Upload a video with filler words and long pauses.
+  - Delete a sentence -> cut list updates.
+  - Bulk-remove filler words -> preview each.
+  - Trim silence above 1s threshold.
+  - Cut list is saved and restored from OPFS.
+allowed_skills:
+  - opfs-read-write-project-state
+constraints:
+  - Ensure UI reflects 2-5s keyframe-boundary snapping (as per Risk 5 mitigation for MVP).
+non_goals:
+  - No actual video re-encoding happens in this phase (that is Phase 5).

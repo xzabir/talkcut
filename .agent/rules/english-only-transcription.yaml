@@ -1,0 +1,6 @@
+name: english-only-transcription
+description: Rule enforcing English-only models for the MVP.
+type: always_on
+constraint: |
+  Only the `ggml-tiny.en.bin` (and optionally `ggml-small.en.bin`) models should be supported.
+  Do not implement language selection or multi-lingual models.

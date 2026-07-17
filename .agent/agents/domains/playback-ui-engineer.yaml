@@ -1,0 +1,6 @@
+name: playback-ui-engineer
+description: |
+  Specialist in building the core HTML5 video playback UI.
+responsibilities:
+  - Build the drag-drop file input for MP4/MOV/MKV.
+  - Implement standard video playback controls.

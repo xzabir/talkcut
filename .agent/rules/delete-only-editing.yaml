@@ -1,0 +1,6 @@
+name: delete-only-editing
+description: Rule enforcing delete-only editing operations for the MVP.
+type: always_on
+constraint: |
+  Editing is delete-only.
+  You can only remove audio/video segments. You cannot add, insert, or replace segments.

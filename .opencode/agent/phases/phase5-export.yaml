@@ -1,0 +1,17 @@
+name: phase5-export
+description: |
+  Phase 5 Agent: Export.
+  Delivers WebCodecs pipeline to re-encode video without cut segments, download as WebM.
+exit_criteria:
+  - Upload a 2-minute video, delete 3 segments, export.
+  - Playback confirms cuts are accurate and A/V stays in sync.
+  - Export completes in roughly real-time or faster on modern hardware.
+allowed_skills:
+  - webcodecs-frame-accurate-cut
+  - av-sync-verification
+  - chrome-only-feature-detection-fallback
+constraints:
+  - Scope MVP to keyframe-boundary cuts only. Do not attempt mid-GOP decode/trim/re-encode.
+non_goals:
+  - Firefox/Safari export support.
+  - MP4 export (WebM only).
