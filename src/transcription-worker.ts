@@ -146,7 +146,15 @@ self.onmessage = (e: MessageEvent<WhisperWorkerInMessage>): void => {
 
   if (type === 'transcribe') {
     const { audioData, sampleRate } = e.data;
-    syntheticTranscription(audioData, sampleRate).catch((err: unknown) => {
+
+    // The main thread transfers the underlying ArrayBuffer for performance. If a
+    // real Float32Array is passed (e.g. in a future WASM integration), use it
+    // directly; otherwise reconstruct it from the transferred buffer.
+    const samples = audioData instanceof Float32Array
+      ? audioData
+      : new Float32Array(audioData);
+
+    syntheticTranscription(samples, sampleRate).catch((err: unknown) => {
       post({ type: 'error', message: err instanceof Error ? err.message : String(err) });
     });
     return;

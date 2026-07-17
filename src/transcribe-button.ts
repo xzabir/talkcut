@@ -198,21 +198,21 @@ export class TranscribeButton {
           this.updateProgress(displayProgress, message);
         },
         onComplete: (words: TranscriptWord[]) => {
+          this.isTranscribing = false;
           this.showProgress(false);
           this.panel.setWords(words);
           this.saveResults(words);
-          this.isTranscribing = false;
         },
         onError: (error: string) => {
+          this.isTranscribing = false;
           this.showProgress(false);
           this.showError(error);
-          this.isTranscribing = false;
         },
       });
     } catch (err) {
+      this.isTranscribing = false;
       this.showProgress(false);
       this.showError(err instanceof Error ? err.message : String(err));
-      this.isTranscribing = false;
     }
   }
 
