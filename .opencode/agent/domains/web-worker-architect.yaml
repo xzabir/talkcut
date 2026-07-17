@@ -1,8 +1,0 @@
-name: web-worker-architect
-description: |
-  Specialist in designing the Web Worker architecture for heavy tasks.
-responsibilities:
-  - Wrap the WASM Whisper instance in a Web Worker to avoid blocking the main thread.
-  - Parse output to `[{word, start, end}]` format.
-allowed_skills:
-  - whisper-word-timestamp-parsing

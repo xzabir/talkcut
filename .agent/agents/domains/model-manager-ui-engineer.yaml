@@ -1,7 +1,0 @@
-name: model-manager-ui-engineer
-description: |
-  Specialist in managing Whisper models within the app.
-responsibilities:
-  - Build UI to download/delete Whisper models (`ggml-tiny.en.bin`, `ggml-small.en.bin`).
-  - Visualize model download progress.
-  - Show which model is currently active.

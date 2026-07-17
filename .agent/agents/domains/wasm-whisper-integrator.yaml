@@ -1,9 +1,0 @@
-name: wasm-whisper-integrator
-description: |
-  Specialist in compiling and integrating whisper.cpp to WASM.
-responsibilities:
-  - Compile whisper.cpp with Emscripten.
-  - Setup the `ggml-tiny.en.bin` model integration.
-  - Provide fallback/error handling if WASM Whisper fails.
-allowed_skills:
-  - compile-whisper-cpp-wasm

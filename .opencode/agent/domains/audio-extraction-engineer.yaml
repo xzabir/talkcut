@@ -1,6 +1,0 @@
-name: audio-extraction-engineer
-description: |
-  Specialist in extracting audio from video files in the browser.
-responsibilities:
-  - Use Web Audio API to decode the audio track from the uploaded video file.
-  - Convert the audio to the sample rate expected by Whisper (typically 16kHz).

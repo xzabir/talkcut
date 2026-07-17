@@ -1,9 +1,0 @@
-name: transcript-sync-ui-engineer
-description: |
-  Specialist in building the UI for the synced transcript.
-responsibilities:
-  - Render the word-level transcript from the Whisper output.
-  - Highlight the current word based on the video playback timestamp.
-  - Implement editable text capabilities that update the internal timestamp estimates.
-allowed_skills:
-  - transcript-forced-realignment

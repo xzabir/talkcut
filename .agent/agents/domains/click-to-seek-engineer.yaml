@@ -1,5 +1,0 @@
-name: click-to-seek-engineer
-description: |
-  Specialist in linking transcript interaction to video playback.
-responsibilities:
-  - Implement click handlers on the transcript words to seek the HTML5 video element to the exact start timestamp of that word.

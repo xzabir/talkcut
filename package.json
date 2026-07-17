@@ -3,17 +3,23 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "description": "Browser-based, transcript-driven video editor. All processing runs locally.",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^3.0.0",
+    "jsdom": "^26.0.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
-    "vite-plugin-pwa": "^1.0.0"
-  },
-  "dependencies": {
-    "peaks.js": "^3.4.0"
+    "vite-plugin-pwa": "^1.0.0",
+    "vitest": "^3.0.0"
   }
 }

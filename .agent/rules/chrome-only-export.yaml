@@ -1,6 +1,0 @@
-name: chrome-only-export
-description: Rule enforcing Chrome-only target for export in the MVP.
-type: always_on
-constraint: |
-  Export functionality relies on WebCodecs, which is primarily supported in Chrome/Edge.
-  Do not attempt to build FFmpeg/WASM fallbacks for Firefox/Safari export in the MVP phase.

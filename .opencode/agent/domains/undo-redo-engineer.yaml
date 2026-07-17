@@ -1,6 +1,0 @@
-name: undo-redo-engineer
-description: |
-  Specialist in state management and undo history.
-responsibilities:
-  - Build a full undo/redo stack for all transcript edits and cut operations.
-  - Ensure UI components properly react to undo/redo operations.

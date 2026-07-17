@@ -2,7 +2,7 @@ import './style.css';
 import './sw-register.ts';
 import { VideoPlayer } from './player.ts';
 import { WaveformRenderer } from './waveform.ts';
-import { saveVideo, getVideoUrl, loadProject, saveProject, videoExists, requestPersistence } from './opfs.ts';
+import { saveVideo, getVideoUrl, loadProject, saveProject, videoExists, requestPersistence, isPersisted, loadVideo } from './opfs.ts';
 import { TranscribeButton } from './transcribe-button.ts';
 import { TranscriptPanel } from './transcript-panel.ts';
 import { CutManager } from './cut-manager.ts';
@@ -147,7 +147,6 @@ function setupUI(): void {
     exportPanelContainer,
     async () => {
       if (!currentProject) return null;
-      const { loadVideo } = await import('./opfs.ts');
       return loadVideo(currentProject.videoFileName);
     },
     () => cutManager.getRegions(),
@@ -294,7 +293,6 @@ shortcuts.mount();
 restoreProject();
 
 (async () => {
-  const { isPersisted } = await import('./opfs.ts');
   const persisted = await isPersisted();
   updateOpfsStatus(persisted);
 })();

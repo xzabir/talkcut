@@ -1,6 +1,0 @@
-name: filler-word-scanner-engineer
-description: |
-  Specialist in identifying filler words in the transcript.
-responsibilities:
-  - Use regex/pattern matching against the transcript to identify "um", "uh", "you know", "like", etc.
-  - Generate candidate removals and provide a UI to preview/apply them.

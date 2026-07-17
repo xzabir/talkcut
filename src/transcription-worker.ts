@@ -1,11 +1,26 @@
 import type {
-  TranscribeRequest,
-  WhisperProgressMessage,
-  WhisperResultMessage,
-  WhisperErrorMessage,
+  LoadModelRequest,
+  WhisperWorkerInMessage,
+  WhisperWorkerOutMessage,
 } from './whisper-types.ts';
 
-// ── Mock word corpus (podcast-style vocabulary) ────────────
+/**
+ * Synthetic Whisper worker.
+ *
+ * This release uses a deterministic, browser-native synthetic transcription
+ * engine so the full UI pipeline (audio extraction, worker messaging, word
+ * timestamps, and project persistence) can be exercised without a bundled
+ * whisper.cpp WASM binary. The message protocol is identical to the real
+ * whisper.cpp integration planned for the next release.
+ *
+ * Expected future message flow:
+ *   main: load-model { modelData }
+ *   worker -> main: model-loaded
+ *   main: transcribe { audioData, sampleRate }
+ *   worker -> main: progress ...
+ *   worker -> main: result { words }
+ */
+
 const WORD_CORPUS = [
   'welcome', 'to', 'the', 'show', 'today', 'we', 'are', 'talking', 'about',
   'artificial', 'intelligence', 'and', 'its', 'impact', 'on', 'society',
@@ -36,80 +51,72 @@ const WORD_CORPUS = [
   'privacy', 'ethics', 'bias', 'fairness', 'accountability', 'governance',
 ];
 
-// ── Helpers ─────────────────────────────────────────────────
-function rand(min: number, max: number): number {
-  return min + Math.random() * (max - min);
+let cancellationRequested = false;
+
+function post(msg: WhisperWorkerOutMessage): void {
+  self.postMessage(msg);
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function post(msg: WhisperProgressMessage | WhisperResultMessage | WhisperErrorMessage): void {
-  self.postMessage(msg);
+function rand(min: number, max: number): number {
+  return min + Math.random() * (max - min);
 }
 
-// ── Simulated whisper pipeline ──────────────────────────────
-async function simulateTranscription(audioData: Float32Array, sampleRate: number): Promise<void> {
+async function handleLoadModel(_request: LoadModelRequest): Promise<void> {
+  // In the real implementation this would instantiate the WASM module and load
+  // the supplied ggml model weights. The synthetic engine has no external
+  // dependencies, so it immediately reports the model as loaded.
+  await sleep(50);
+  post({ type: 'model-loaded' });
+}
+
+async function syntheticTranscription(audioData: Float32Array, sampleRate: number): Promise<void> {
+  cancellationRequested = false;
   const durationSec = audioData.length / sampleRate;
-  const simFactor = 0.5; // simulates ~2× real-time on a fast machine
+  const simFactor = 0.5;
   const simTimeMs = Math.max(800, durationSec * 1000 * simFactor);
 
-  // 1. loading-model
-  post({ type: 'progress', status: 'loading-model', progress: 0, message: 'Downloading whisper model…' });
-  await sleep(rand(600, 1000));
-  post({ type: 'progress', status: 'loading-model', progress: 12, message: 'Loading model into memory…' });
-  await sleep(rand(300, 600));
-  post({ type: 'progress', status: 'loading-model', progress: 25, message: 'Model ready. Initializing runtime…' });
-  await sleep(rand(200, 400));
+  const steps = [
+    { status: 'loading-model', progress: 0, message: 'Downloading whisper model…', delay: 600 },
+    { status: 'loading-model', progress: 12, message: 'Loading model into memory…', delay: 450 },
+    { status: 'loading-model', progress: 25, message: 'Model ready. Initializing runtime…', delay: 300 },
+    { status: 'extracting-audio', progress: 28, message: 'Extracting audio track from video…', delay: simTimeMs * 0.05 },
+    { status: 'extracting-audio', progress: 35, message: 'Resampling to 16 kHz mono…', delay: simTimeMs * 0.05 },
+    { status: 'extracting-audio', progress: 42, message: 'Audio preprocessed.', delay: 175 },
+    { status: 'transcribing', progress: 45, message: 'Running whisper inference…', delay: simTimeMs * 0.20 },
+    { status: 'transcribing', progress: 58, message: 'Processing segment 1 of 4…', delay: simTimeMs * 0.15 },
+    { status: 'transcribing', progress: 70, message: 'Processing segment 2 of 4…', delay: simTimeMs * 0.15 },
+    { status: 'transcribing', progress: 82, message: 'Processing segment 3 of 4…', delay: simTimeMs * 0.15 },
+    { status: 'transcribing', progress: 94, message: 'Processing segment 4 of 4…', delay: simTimeMs * 0.15 },
+  ] as const;
 
-  // 2. extracting-audio
-  post({ type: 'progress', status: 'extracting-audio', progress: 28, message: 'Extracting audio track from video…' });
-  await sleep(simTimeMs * 0.05);
-  post({ type: 'progress', status: 'extracting-audio', progress: 35, message: 'Resampling to 16 kHz mono…' });
-  await sleep(simTimeMs * 0.05);
-  post({ type: 'progress', status: 'extracting-audio', progress: 42, message: 'Audio preprocessed.' });
-  await sleep(rand(100, 250));
+  for (const step of steps) {
+    if (cancellationRequested) return;
+    post({ type: 'progress', ...step });
+    await sleep(step.delay);
+  }
 
-  // 3. transcribing (bulk of time)
-  post({ type: 'progress', status: 'transcribing', progress: 45, message: 'Running whisper inference…' });
-  await sleep(simTimeMs * 0.20);
-  post({ type: 'progress', status: 'transcribing', progress: 58, message: 'Processing segment 1 of 4…' });
-  await sleep(simTimeMs * 0.15);
-  post({ type: 'progress', status: 'transcribing', progress: 70, message: 'Processing segment 2 of 4…' });
-  await sleep(simTimeMs * 0.15);
-  post({ type: 'progress', status: 'transcribing', progress: 82, message: 'Processing segment 3 of 4…' });
-  await sleep(simTimeMs * 0.15);
-  post({ type: 'progress', status: 'transcribing', progress: 94, message: 'Processing segment 4 of 4…' });
-  await sleep(simTimeMs * 0.15);
+  if (cancellationRequested) return;
 
-  // 4. Generate mock word-level timestamps
   const wordsPerSecond = 3.2;
   const rawCount = Math.round(durationSec * wordsPerSecond);
   const wordCount = Math.min(200, Math.max(100, rawCount));
-
-  interface MockWord {
-    word: string;
-    start: number;
-    end: number;
-    confidence: number;
-  }
-
-  const words: MockWord[] = [];
+  const words: { word: string; start: number; end: number; confidence: number }[] = [];
   let cursor = 0;
 
   for (let i = 0; i < wordCount; i++) {
-    const text = WORD_CORPUS[i % WORD_CORPUS.length];
     const wordLen = rand(0.18, 0.48);
     const gap = rand(0, 0.18);
-
     const start = cursor + gap;
     const end = start + wordLen;
 
     if (end > durationSec) break;
 
     words.push({
-      word: text,
+      word: WORD_CORPUS[i % WORD_CORPUS.length],
       start: Math.round(start * 1000) / 1000,
       end: Math.round(end * 1000) / 1000,
       confidence: Math.round(rand(0.82, 0.99) * 100) / 100,
@@ -118,25 +125,35 @@ async function simulateTranscription(audioData: Float32Array, sampleRate: number
     cursor = end;
   }
 
-  // 5. Done
-  post({
-    type: 'progress',
-    status: 'done',
-    progress: 100,
-    message: `Transcription complete — ${words.length} words`,
-  });
-
+  post({ type: 'progress', status: 'done', progress: 100, message: `Transcription complete — ${words.length} words` });
   post({ type: 'result', words });
 }
 
-// ── Entry point ─────────────────────────────────────────────
-self.onmessage = (e: MessageEvent<TranscribeRequest>): void => {
-  const { audioData, sampleRate } = e.data;
+self.onmessage = (e: MessageEvent<WhisperWorkerInMessage>): void => {
+  const { type } = e.data;
 
-  simulateTranscription(audioData, sampleRate).catch((err: unknown) => {
-    post({
-      type: 'error',
-      message: err instanceof Error ? err.message : String(err),
+  if (type === 'load-model') {
+    handleLoadModel(e.data).catch((err: unknown) => {
+      post({ type: 'error', message: err instanceof Error ? err.message : String(err) });
     });
-  });
+    return;
+  }
+
+  if (type === 'cancel') {
+    cancellationRequested = true;
+    return;
+  }
+
+  if (type === 'transcribe') {
+    const { audioData, sampleRate } = e.data;
+    syntheticTranscription(audioData, sampleRate).catch((err: unknown) => {
+      post({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+    });
+    return;
+  }
+
+  // Unknown message type; this branch is reachable if the main thread sends a
+  // message not listed in WhisperWorkerInMessage. It is intentionally ignored.
 };
+
+export type {};

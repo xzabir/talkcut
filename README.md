@@ -1,85 +1,132 @@
-# TalkCut — Edit video by editing the transcript
+# TalkCut
+
+A browser-based, transcript-driven video editor. All media processing—transcription, editing, and export—runs locally in the user's browser. No server upload, no API key, and no cloud transcription are required.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Status: Active](https://img.shields.io/badge/status-active-brightgreen.svg)](https://github.com/YOUR_USERNAME/talkcut)
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-live-blue)](https://xzabir.github.io/talkcut)
 
-**Nothing leaves your browser.**
+## Abstract
 
----
+TalkCut is a single-page web application that lets users edit talking-head video by editing the transcript. The pipeline is: (1) a media file is selected in the browser, (2) audio is extracted locally and passed to a Web Worker for speech recognition, (3) the resulting word-level timestamps drive an editable transcript panel synchronized to playback, and (4) user-selected deletions are exported through a WebCodecs re-encode into a WebM/VP9/Opus file. The current release uses a synthetic speech-recognition engine for end-to-end UI validation while the real whisper.cpp/WASM integration is finalized.
 
-> **TalkCut is the open-source Descript alternative.** [Descript](https://descript.com) lets you edit video by editing the transcript — but costs $24/mo, burns AI credits on basic operations, and runs as a desktop app that [crashes mid-export](https://old.reddit.com/r/podcasting/comments/1uq5u3w/descript_alternatives/). TalkCut does the same thing, in the browser, for free.
->
-> No watermark. No subscription. No login. No API keys. Your video never leaves your machine — transcription, editing, and export all run locally. Upload a video, edit the transcript, download the cut.
->
-> **TalkCut — edit video by editing the transcript. Nothing leaves your browser.**
+## Motivation
 
-## Features
-
-- **Upload & Transcribe** — Drag and drop MP4, MOV, or MKV. Local Whisper transcription via WebAssembly produces word-level timestamps.
-- **Transcript Sync** — Watch words highlight as the video plays. Click any word to seek to that timestamp.
-- **Delete to Cut** — Select text in the transcript, press delete, and that segment is removed from the video. Pure delete-only editing — no insert or replace.
-- **Filler Word Removal** — One-click scan for "um," "uh," "you know," "like," and "I mean." Preview each removal before applying.
-- **Silence Trimming** — Remove pauses longer than an adjustable threshold using word-level timestamp gaps.
-- **Export to WebM** — Re-encode your edited video to VP9 + Opus via the WebCodecs API. Downloads directly from the browser.
-
-## Non-Goals
-
-These are deliberate scope decisions for the MVP and will not change before launch:
-
-- **Chrome/Edge only for export.** Firefox and Safari lack WebCodecs encode support. Transcription and editing work on any browser; only the final export step requires Chrome or Edge.
-- **Delete-only editing.** You can remove segments from your video, but you cannot insert, replace, or rearrange clips. There is no timeline or multi-track editor.
-- **WebM output only.** Export format is WebM (VP9 video, Opus audio). No MP4, no GIF, no social-media presets.
-- **English only.** The bundled Whisper model supports English transcription. Non-English language models are a Phase 2 item.
-- **No AI features.** No voice cloning (Overdub), no AI audio enhancement (Studio Sound), no AI-generated captions or summaries.
-
-## Quick Start
-
-```bash
-git clone https://github.com/YOUR_USERNAME/talkcut.git
-cd talkcut
-npm install
-npm run dev
-```
-
-Open **Google Chrome** or **Microsoft Edge** and navigate to `http://localhost:5173`. Drag in a video, click **Transcribe**, edit the transcript, and export your cut.
+Existing transcript-driven video editors require server-side transcription and subscription pricing. Cloud processing raises privacy concerns for journalists and legal users, and network transfers limit usability for large files. TalkCut tests whether the same editing paradigm can be implemented entirely inside the browser using modern on-device APIs (WebCodecs, Web Audio, OPFS, Web Workers) and open models (whisper.cpp).
 
 ## Architecture
 
-| Layer | Technology |
-|-------|-----------|
-| **Build** | Vite, TypeScript |
-| **UI** | Vanilla TypeScript (no framework), CSS custom properties |
-| **PWA** | Service worker via `vite-plugin-pwa`, offline-capable after first load |
-| **Transcription** | whisper.cpp compiled to WASM, runs in a Web Worker |
-| **Video decode/encode** | WebCodecs API (VP9 + Opus → WebM container) |
-| **Storage** | Origin Private File System (OPFS) — video files and project state persist locally, no server |
+```mermaid
+flowchart LR
+    A[Media file] --> B[OPFS cache]
+    B --> C[HTML5 video element]
+    C --> D[Web Audio API<br/>downmix + resample to 16kHz]
+    D --> E[Web Worker]
+    E --> F[whisper.cpp / WASM<br/>synthetic engine in v0.1]
+    F --> G[word-level timestamps]
+    G --> H[Transcript model]
+    H --> I[TranscriptPanel UI]
+    I --> J[Cut list]
+    J --> K[WebCodecs decode<br/>VP9 re-encode]
+    K --> L[WebM muxer]
+    L --> M[download .webm]
+```
 
-### Source file roles
+| Component | Technology | Notes |
+|---|---|---|
+| Build system | Vite 6, TypeScript 5.6 | Vanilla TypeScript; no React or framework runtime. |
+| UI shell | DOM + CSS custom properties | Dark theme, responsive two-pane layout. |
+| PWA | `vite-plugin-pwa` + custom SW | Offline-capable app shell; models cached after first download. |
+| Video player | HTML5 `<video>` | Drag-and-drop MP4/MOV/MKV input. |
+| Audio preprocessing | Web Audio API | Decodes source audio, downmixes to mono, resamples to 16 kHz. |
+| Transcription | Web Worker + whisper.cpp/WASM | v0.1 uses a synthetic engine for UI validation. |
+| Transcript UI | `contenteditable` word spans | Playback sync, click-to-seek, inline editing, forced realignment. |
+| Cut model | `src/cut-manager.ts` | Delete-only regions with undo/redo (50-state stack). |
+| Export | WebCodecs + inline WebM muxer | VP9 video, Opus audio, A/V sync offset correction. |
+| Storage | OPFS | Video blob, transcript, and cut list persist across reloads. |
 
-| File | Purpose |
-|------|---------|
-| `src/main.ts` | Application shell, layout, keyboard shortcuts, project lifecycle |
-| `src/player.ts` | Video playback, drag-and-drop file input, play/pause/seek |
-| `src/waveform.ts` | Waveform visualization and seek-by-click |
-| `src/transcription-worker.ts` | Web Worker that runs Whisper WASM inference |
-| `src/transcription-service.ts` | Worker lifecycle, model loading, progress reporting |
-| `src/transcribe-button.ts` | Transcription trigger UI and progress bar |
-| `src/transcript-panel.ts` | Editable transcript display with playback sync highlighting |
-| `src/audio-extractor.ts` | Extracts audio from video files via Web Audio API |
-| `src/cut-manager.ts` | Cut list data model with undo/redo stack |
-| `src/cuts-panel.ts` | Cut regions UI: filler/silence detection, manual delete |
-| `src/export-panel.ts` | Export settings and progress UI |
-| `src/exporter.ts` | WebCodecs decode → apply cuts → re-encode pipeline |
-| `src/opfs.ts` | OPFS read/write for video blobs and project state |
+## Key Design Constraints
 
-## Contributing
+These are deliberate scope decisions for the v0.1 release, not temporary limitations:
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, architecture overview, and PR guidelines.
+- **Delete-only editing.** Segments can be removed from the transcript/video. No insert, replace, multi-track, or timeline-style rearrangement is supported.
+- **Chrome/Edge only for export.** The WebCodecs `VideoEncoder` API is not available in Firefox or Safari at this release. Transcription and editing run on any modern browser; export requires a Chromium-based browser.
+- **WebM/VP9/Opus output only.** No MP4, GIF, or social-format export is implemented.
+- **English transcription only.** The whisper model bundle and UI are scoped to English. Additional languages are planned for a later release.
+- **No AI features.** No voice cloning, AI audio enhancement, auto-captions, or generative editing.
+- **Keyframe-boundary cuts (v0.1).** Cuts are snapped to the nearest keyframe in the source stream, giving ~2–5 s granularity. Frame-accurate GOP-aware cutting is planned for the next release.
 
-## Live Demo
+## Benchmarks / Evaluation
 
-**[Try TalkCut on GitHub Pages](https://YOUR_USERNAME.github.io/talkcut)**
+All numbers are from the stated reference environment unless otherwise marked. Rows marked **pending** were not run during the v0.1 build and are reserved for the next release cycle.
 
-## License
+| Benchmark | v0.1 result | Reference machine | Status |
+|---|---|---|---|
+| Synthetic transcription speed | ~0.5× real-time (audio duration × 0.5) | Any modern laptop | Measured, not representative of real whisper.cpp |
+| whisper.cpp tiny model | — | mid-range laptop (8 cores, 16 GB RAM) | pending |
+| whisper.cpp small model | — | mid-range laptop (8 cores, 16 GB RAM) | pending |
+| Export time vs. clip length | — | Chrome, 8 cores, 16 GB RAM | pending |
+| Memory footprint at export | — | Chrome, 16 GB RAM | pending |
+| A/V sync drift after 5 cuts | — | Chrome | pending |
 
-MIT © TalkCut contributors
+## Installation
+
+```bash
+git clone https://github.com/xzabir/talkcut.git
+cd talkcut
+npm install
+npm run typecheck
+npm run test
+npm run build
+npm run dev
+```
+
+Open `http://localhost:5173` in Chrome or Edge. Drag in a video, click **Transcribe**, edit the transcript, and export the cut.
+
+## Comparison
+
+| Tool | Price | Local processing | Browser | Export formats | Open source |
+|---|---|---|---|---|---|
+| Descript | $16–50/mo + credits | No | Web beta only | MP4, GIF, social | No |
+| BBC react-transcript-editor | Free | No | Component only | None | Yes, abandoned |
+| autoEdit_2 | Free | No | Electron | None | Yes, abandoned |
+| OpenCut | Free | Partial | Desktop / web | MP4, etc. | Yes |
+| TalkCut | Free | Yes | Yes | WebM | Yes (MIT) |
+
+Sources: [Descript pricing](https://descript.com/pricing), [BBC react-transcript-editor](https://github.com/bbc/react-transcript-editor), [autoEdit_2](https://github.com/OpenNewsLabs/autoEdit_2), [OpenCut](https://github.com/OpenCut-app/OpenCut).
+
+## Roadmap
+
+| Phase | Status | Description |
+|---|---|---|
+| 1: Scaffold & playback | shipped | Vite PWA, video player, waveform, OPFS persistence. |
+| 2: Transcription engine | partial | UI pipeline and audio extraction shipped; real whisper.cpp/WASM integration pending. |
+| 3: Transcript UI & sync | shipped | Editable synced transcript, click-to-seek, forced realignment. |
+| 4: Cut engine | shipped | Filler/silence detection, delete-only editing, undo/redo. |
+| 5: Export | shipped | WebCodecs VP9/Opus WebM export with A/V sync correction. |
+| 6: Polish & launch | shipped | README, CI/CD, GitHub Pages, keyboard shortcuts, model manager. |
+| Post-v0.1: real whisper.cpp WASM | planned | Bundle ggml-tiny.en / ggml-small.en and replace synthetic engine. |
+| Post-v0.1: frame-accurate cuts | planned | GOP-aware decode-trim-re-encode for precise boundaries. |
+| Post-v0.1: Firefox/Safari export | planned | Track WebCodecs encode availability or provide FFmpeg.wasm fallback. |
+| Post-v0.1: localization | planned | Non-English whisper models. |
+
+## Citation
+
+```bibtex
+@software{talkcut2026,
+  title = {TalkCut: Browser-based transcript-driven video editing},
+  author = {TalkCut contributors},
+  year = {2026},
+  url = {https://github.com/xzabir/talkcut},
+  note = {MIT License}
+}
+```
+
+## License and Acknowledgments
+
+TalkCut is released under the [MIT License](./LICENSE).
+
+The project uses the WebCodecs API, the Web Audio API, and the Origin Private File System, all standardized by the W3C. Speech recognition is built against the whisper.cpp model format and will be bundled under whisper.cpp's MIT license once the WASM integration lands in the next release.
+
+## Contributing and Security
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development conventions and [SECURITY.md](./SECURITY.md) for vulnerability reporting.

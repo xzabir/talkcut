@@ -1,8 +1,0 @@
-name: opfs-persistence-engineer
-description: |
-  Specialist in Origin Private File System operations.
-responsibilities:
-  - Implement functions to save/load video files to/from OPFS.
-  - Implement functions to save/load project state (transcript, cut list).
-allowed_skills:
-  - opfs-read-write-project-state

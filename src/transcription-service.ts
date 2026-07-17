@@ -1,4 +1,5 @@
 import type { TranscriptWord } from './types.ts';
+import type { WhisperWorkerOutMessage } from './whisper-types.ts';
 
 export interface TranscriptionCallbacks {
   onProgress: (status: string, progress: number, message: string) => void;
@@ -9,11 +10,6 @@ export interface TranscriptionCallbacks {
 const MODEL_DIR = 'models';
 const WHISPER_MODEL = 'whisper-base.bin';
 const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin';
-
-interface WorkerMessage {
-  type: string;
-  [key: string]: unknown;
-}
 
 export class TranscriptionService {
   private worker: Worker | null = null;
@@ -32,9 +28,9 @@ export class TranscriptionService {
       { type: 'module' }
     );
 
-    this.worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
-      const { type } = event.data;
-      switch (type) {
+    this.worker.onmessage = (event: MessageEvent<WhisperWorkerOutMessage>) => {
+      const msg = event.data;
+      switch (msg.type) {
         case 'model-loaded':
           this.modelLoaded = true;
           if (this.modelLoadResolve) {
@@ -43,24 +39,23 @@ export class TranscriptionService {
             this.modelLoadReject = null;
           }
           break;
+
         case 'progress':
           if (this.currentCallbacks) {
-            this.currentCallbacks.onProgress(
-              event.data.status as string,
-              event.data.progress as number,
-              event.data.message as string
-            );
+            this.currentCallbacks.onProgress(msg.status, msg.progress, msg.message);
           }
           break;
-        case 'complete':
+
+        case 'result':
           if (this.currentCallbacks) {
-            this.currentCallbacks.onComplete(event.data.words as TranscriptWord[]);
+            this.currentCallbacks.onComplete(msg.words);
             this.currentCallbacks = null;
           }
           break;
+
         case 'error':
           {
-            const errMsg = event.data.error as string;
+            const errMsg = msg.message;
             if (this.modelLoadReject) {
               this.modelLoadReject(new Error(errMsg));
               this.modelLoadResolve = null;
@@ -92,76 +87,78 @@ export class TranscriptionService {
   ): Promise<void> {
     if (this.modelLoaded) return;
 
-    return new Promise<void>(async (resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       this.modelLoadResolve = resolve;
       this.modelLoadReject = reject;
 
-      try {
-        const root = await navigator.storage.getDirectory();
-        let modelDir: FileSystemDirectoryHandle;
+      (async () => {
         try {
-          modelDir = await root.getDirectoryHandle(MODEL_DIR);
-        } catch {
-          modelDir = await root.getDirectoryHandle(MODEL_DIR, { create: true });
-        }
-
-        let modelData: ArrayBuffer;
-
-        try {
-          const fh = await modelDir.getFileHandle(WHISPER_MODEL);
-          const file = await fh.getFile();
-          modelData = await file.arrayBuffer();
-          onProgress?.(1, 'Model loaded from cache');
-        } catch {
-          onProgress?.(0, 'Downloading whisper model...');
-          const resp = await fetch(MODEL_URL);
-          if (!resp.ok) throw new Error(`Model download failed: ${resp.status}`);
-
-          const body = resp.body;
-          if (!body) {
-            modelData = await resp.arrayBuffer();
-            onProgress?.(0.95, 'Caching model...');
-          } else {
-            const contentLength = resp.headers.get('content-length');
-            const total = contentLength ? parseInt(contentLength, 10) : 0;
-            const reader = body.getReader();
-            const chunks: Uint8Array[] = [];
-            let received = 0;
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              chunks.push(value);
-              received += value.length;
-              if (total) {
-                const pct = Math.round((received / total) * 100);
-                onProgress?.(received / total, `Downloading model... ${pct}%`);
-              }
-            }
-
-            const merged = new Uint8Array(received);
-            let offset = 0;
-            for (const chunk of chunks) {
-              merged.set(chunk, offset);
-              offset += chunk.length;
-            }
-            modelData = merged.buffer.slice(0);
-            onProgress?.(0.95, 'Caching model...');
+          const root = await navigator.storage.getDirectory();
+          let modelDir: FileSystemDirectoryHandle;
+          try {
+            modelDir = await root.getDirectoryHandle(MODEL_DIR);
+          } catch {
+            modelDir = await root.getDirectoryHandle(MODEL_DIR, { create: true });
           }
 
-          const fh = await modelDir.getFileHandle(WHISPER_MODEL, { create: true });
-          const writable = await fh.createWritable();
-          await writable.write(new Uint8Array(modelData));
-          await writable.close();
-        }
+          let modelData: ArrayBuffer;
 
-        this.worker?.postMessage(
-          { type: 'load-model', modelData },
-          [modelData]
-        );
-      } catch (err) {
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
+          try {
+            const fh = await modelDir.getFileHandle(WHISPER_MODEL);
+            const file = await fh.getFile();
+            modelData = await file.arrayBuffer();
+            onProgress?.(1, 'Model loaded from cache');
+          } catch {
+            onProgress?.(0, 'Downloading whisper model...');
+            const resp = await fetch(MODEL_URL);
+            if (!resp.ok) throw new Error(`Model download failed: ${resp.status}`);
+
+            const body = resp.body;
+            if (!body) {
+              modelData = await resp.arrayBuffer();
+              onProgress?.(0.95, 'Caching model...');
+            } else {
+              const contentLength = resp.headers.get('content-length');
+              const total = contentLength ? parseInt(contentLength, 10) : 0;
+              const reader = body.getReader();
+              const chunks: Uint8Array[] = [];
+              let received = 0;
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                received += value.length;
+                if (total) {
+                  const pct = Math.round((received / total) * 100);
+                  onProgress?.(received / total, `Downloading model... ${pct}%`);
+                }
+              }
+
+              const merged = new Uint8Array(received);
+              let offset = 0;
+              for (const chunk of chunks) {
+                merged.set(chunk, offset);
+                offset += chunk.length;
+              }
+              modelData = merged.buffer.slice(0);
+              onProgress?.(0.95, 'Caching model...');
+            }
+
+            const fh = await modelDir.getFileHandle(WHISPER_MODEL, { create: true });
+            const writable = await fh.createWritable();
+            await writable.write(new Uint8Array(modelData));
+            await writable.close();
+          }
+
+          this.worker?.postMessage(
+            { type: 'load-model', modelData },
+            [modelData]
+          );
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      })();
     });
   }
 
@@ -185,9 +182,7 @@ export class TranscriptionService {
   }
 
   cancel(): void {
-    if (this.currentCallbacks) {
-      this.currentCallbacks = null;
-    }
+    this.currentCallbacks = null;
     this.worker?.postMessage({ type: 'cancel' });
   }
 

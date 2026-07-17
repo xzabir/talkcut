@@ -1,6 +1,0 @@
-name: local-processing-only
-description: Rule enforcing that all processing happens locally.
-type: always_on
-constraint: |
-  No cloud processing. No server dependency. No API keys.
-  All transcription, editing, and export must run locally on the user's machine within the browser.
