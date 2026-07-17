@@ -2,6 +2,7 @@
 
 A browser-based, transcript-driven video editor. All media processing—transcription, editing, and export—runs locally in the user's browser. No server upload, no API key, and no cloud transcription are required.
 
+[![CI](https://github.com/xzabir/talkcut/actions/workflows/ci.yml/badge.svg)](https://github.com/xzabir/talkcut/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-live-blue)](https://xzabir.github.io/talkcut)
 
