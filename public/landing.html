@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="TalkCut — Edit video by editing the transcript. Free, open-source, nothing leaves your browser." />
+<meta name="theme-color" content="#1a1a2e" />
+<title>TalkCut — Edit video by editing the transcript</title>
+<style>
+  :root {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-surface: #0f3460;
+    --text-primary: #e8e8e8;
+    --text-secondary: #a0a0b0;
+    --accent: #4f8cff;
+    --accent-hover: #3a6fd8;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --border: #2a2a4a;
+    --radius: 8px;
+    --max-width: 1100px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .container { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; }
+
+  /* Nav */
+  .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 0; border-bottom: 1px solid var(--border);
+  }
+  .nav-logo { font-size: 22px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .nav-links { display: flex; gap: 24px; align-items: center; }
+  .nav-links a { color: var(--text-secondary); font-size: 14px; }
+  .nav-links a:hover { color: var(--text-primary); }
+
+  .btn {
+    display: inline-block; padding: 10px 24px; border: none; border-radius: var(--radius);
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s, transform 0.15s;
+    text-decoration: none;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+  .btn-outline:hover { background: var(--accent); color: #fff; }
+
+  /* Hero */
+  .hero {
+    padding: 80px 0 64px; text-align: center;
+  }
+  .hero h1 {
+    font-size: 48px; font-weight: 800; line-height: 1.15; letter-spacing: -1px;
+    margin-bottom: 16px;
+  }
+  .hero h1 span { color: var(--accent); }
+  .hero .tagline {
+    font-size: 22px; color: var(--text-secondary); margin-bottom: 12px; font-weight: 400;
+  }
+  .hero .privacy-badge {
+    display: inline-block; padding: 6px 16px; border-radius: 20px;
+    background: var(--bg-surface); color: var(--success); font-size: 13px; font-weight: 600;
+    margin-bottom: 32px;
+  }
+  .hero-actions { display: flex; gap: 12px; justify-content: center; }
+
+  /* Privacy strip */
+  .privacy-strip {
+    text-align: center; padding: 28px 0;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    margin-bottom: 64px;
+  }
+  .privacy-strip p {
+    font-size: 15px; color: var(--text-secondary); max-width: 680px; margin: 0 auto;
+    line-height: 1.7;
+  }
+
+  /* Section titles */
+  .section-title {
+    font-size: 28px; font-weight: 700; margin-bottom: 32px; text-align: center; letter-spacing: -0.5px;
+  }
+
+  /* Features grid */
+  .features { margin-bottom: 80px; }
+  .features-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+  }
+  .feature-card {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 28px; text-align: center;
+    transition: border-color 0.2s;
+  }
+  .feature-card:hover { border-color: var(--accent); }
+  .feature-icon { font-size: 32px; margin-bottom: 12px; }
+  .feature-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+  .feature-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.55; }
+
+  /* Non-goals */
+  .nongoals { margin-bottom: 80px; text-align: center; }
+  .nongoals-list {
+    display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; max-width: 800px; margin: 0 auto;
+  }
+  .nongoal-tag {
+    padding: 8px 16px; border-radius: var(--radius);
+    background: var(--bg-surface); color: var(--text-secondary);
+    font-size: 14px; border: 1px solid var(--border);
+  }
+
+  /* Comparison table */
+  .comparison { margin-bottom: 80px; }
+  .comparison table {
+    width: 100%; border-collapse: collapse; font-size: 14px;
+  }
+  .comparison th, .comparison td {
+    padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border);
+  }
+  .comparison th { color: var(--text-secondary); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .comparison td:first-child { font-weight: 500; }
+  .comparison tr td:last-child { color: var(--accent); font-weight: 600; }
+
+  .check { color: var(--success); }
+  .cross { color: var(--danger); }
+
+  /* Footer */
+  .footer {
+    padding: 32px 0; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--text-secondary);
+  }
+  .footer-links { display: flex; gap: 20px; }
+
+  @media (max-width: 768px) {
+    .hero h1 { font-size: 32px; }
+    .hero .tagline { font-size: 18px; }
+    .features-grid { grid-template-columns: 1fr; }
+    .footer { flex-direction: column; gap: 12px; text-align: center; }
+  }
+</style>
+</head>
+<body>
+
+<header class="container">
+  <nav class="nav">
+    <span class="nav-logo">TalkCut</span>
+    <div class="nav-links">
+      <a href="/">App</a>
+      <a href="https://github.com/YOUR_USERNAME/talkcut">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+  <section class="hero container">
+    <p class="privacy-badge">Nothing leaves your browser.</p>
+    <h1>Edit video by editing<br />the <span>transcript</span>.</h1>
+    <p class="tagline">Nothing leaves your browser.</p>
+    <div class="hero-actions">
+      <a href="/" class="btn btn-primary">Open TalkCut</a>
+      <a href="https://github.com/YOUR_USERNAME/talkcut" class="btn btn-outline">View on GitHub</a>
+    </div>
+  </section>
+
+  <div class="container">
+    <div class="privacy-strip">
+      <p>
+        <strong>No watermark. No subscription. No login. No API keys.</strong><br />
+        Your video never leaves your machine. Transcription, editing, and export all run locally in the browser.
+      </p>
+    </div>
+  </div>
+
+  <section class="features container">
+    <h2 class="section-title">Features</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🎙</div>
+        <h3>Local Transcription</h3>
+        <p>Whisper runs in your browser via WebAssembly. Word-level timestamps, no server required.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>Privacy First</h3>
+        <p>Nothing leaves your browser. No uploads, no accounts, no telemetry. Works offline as a PWA.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🖥</div>
+        <h3>Open Source</h3>
+        <p>MIT licensed. Hack it, fork it, embed it. No credit meters, no subscription tiers, no vendor lock-in.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">✂</div>
+        <h3>Delete-Only Editing</h3>
+        <p>Select words in the transcript, press delete. That segment is removed from the video. Simple and predictable.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Chrome Export</h3>
+        <p>Export to WebM (VP9 + Opus) via the WebCodecs API. Hardware-accelerated encode on Chrome and Edge.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">💰</div>
+        <h3>Free Forever</h3>
+        <p>No paywalls, no usage limits, no credit metering. Transcribe as much as your hardware can handle.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="nongoals container">
+    <h2 class="section-title">Current Limitations</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 24px; font-size: 14px;">
+      These are deliberate MVP scope decisions. They are documented, not hidden.
+    </p>
+    <div class="nongoals-list">
+      <span class="nongoal-tag">Chrome/Edge only for export</span>
+      <span class="nongoal-tag">Delete-only — no insert or replace</span>
+      <span class="nongoal-tag">WebM output only (no MP4)</span>
+      <span class="nongoal-tag">English only (more languages in Phase 2)</span>
+      <span class="nongoal-tag">No AI voice cloning</span>
+      <span class="nongoal-tag">No AI audio enhancement</span>
+      <span class="nongoal-tag">No screen recording</span>
+      <span class="nongoal-tag">No multi-track editing</span>
+    </div>
+  </section>
+
+  <section class="comparison container">
+    <h2 class="section-title">TalkCut vs Descript</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Dimension</th>
+          <th>Descript</th>
+          <th>TalkCut</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Price</td>
+          <td>$24–50/mo + credit overage</td>
+          <td>Free</td>
+        </tr>
+        <tr>
+          <td>Watermark</td>
+          <td>Free tier: yes, 720p</td>
+          <td>Never</td>
+        </tr>
+        <tr>
+          <td>Transcription quota</td>
+          <td>10–40 hrs/mo</td>
+          <td>Unlimited (hardware-bound)</td>
+        </tr>
+        <tr>
+          <td>AI credit meter</td>
+          <td>Yes, runs out mid-workflow</td>
+          <td>None</td>
+        </tr>
+        <tr>
+          <td>Offline</td>
+          <td>Desktop app only</td>
+          <td>Full PWA, works offline</td>
+        </tr>
+        <tr>
+          <td>Privacy</td>
+          <td>Server-side transcription</td>
+          <td>All local, nothing leaves browser</td>
+        </tr>
+        <tr>
+          <td>Browser-based</td>
+          <td>Web beta, secondary</td>
+          <td>Primary, only mode</td>
+        </tr>
+        <tr>
+          <td>Open source</td>
+          <td>No</td>
+          <td>MIT</td>
+        </tr>
+        <tr>
+          <td>Hackable / extensible</td>
+          <td>No</td>
+          <td>Yes</td>
+        </tr>
+        <tr>
+          <td>AI voice cloning</td>
+          <td>Overdub (Lyrebird)</td>
+          <td>No (non-goal)</td>
+        </tr>
+        <tr>
+          <td>AI audio enhancement</td>
+          <td>Studio Sound</td>
+          <td>No (non-goal)</td>
+        </tr>
+        <tr>
+          <td>Multi-track</td>
+          <td>Yes</td>
+          <td>No (non-goal)</td>
+        </tr>
+        <tr>
+          <td>Export formats</td>
+          <td>MP4, GIF, social</td>
+          <td>WebM (Chrome/Edge)</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<footer class="container">
+  <div class="footer">
+    <span>MIT License &copy; TalkCut contributors</span>
+    <div class="footer-links">
+      <a href="https://github.com/YOUR_USERNAME/talkcut">GitHub</a>
+      <a href="https://github.com/YOUR_USERNAME/talkcut/blob/main/CONTRIBUTING.md">Contribute</a>
+      <a href="/">Launch App</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
