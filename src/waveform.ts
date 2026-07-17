@@ -35,16 +35,20 @@ export class WaveformRenderer {
   }
 
   async loadFromVideo(video: HTMLVideoElement): Promise<void> {
-    const audioContext = new AudioContext();
-    const response = await fetch(video.src);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    try {
+      const audioContext = new AudioContext();
+      const response = await fetch(video.src);
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-    const channelData = audioBuffer.getChannelData(0);
-    this.data = this.downsample(channelData, this.canvas.width * 2);
-    this.duration = audioBuffer.duration;
-    audioContext.close();
-    this.draw();
+      const channelData = audioBuffer.getChannelData(0);
+      this.data = this.downsample(channelData, this.canvas.width * 4);
+      this.duration = audioBuffer.duration;
+      audioContext.close();
+      this.draw();
+    } catch (e) {
+      console.warn('Waveform generation failed:', e);
+    }
   }
 
   private downsample(data: Float32Array, targetLength: number): Float32Array {
@@ -109,26 +113,24 @@ export class WaveformRenderer {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, width, height);
 
-    const padding = 2;
+    const padding = 4;
     const drawHeight = height - padding * 2;
     const midY = height / 2;
 
-    // Draw cut regions as shaded areas
     if (this.duration > 0) {
       for (const region of this.cutRegions) {
         const x1 = (region.start / this.duration) * width;
         const x2 = (region.end / this.duration) * width;
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+        ctx.fillStyle = 'rgba(248, 81, 73, 0.15)';
         ctx.fillRect(x1, padding, x2 - x1, drawHeight);
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
-        ctx.fillRect(x1, padding, 2, drawHeight);
-        ctx.fillRect(x2 - 2, padding, 2, drawHeight);
+        ctx.fillStyle = 'rgba(248, 81, 73, 0.5)';
+        ctx.fillRect(x1, padding, 1, drawHeight);
+        ctx.fillRect(x2 - 1, padding, 1, drawHeight);
       }
     }
 
-    // Draw waveform
     if (this.data) {
-      ctx.strokeStyle = '#4f8cff';
+      ctx.strokeStyle = '#5e60ce';
       ctx.lineWidth = 1;
       ctx.beginPath();
 
@@ -142,19 +144,35 @@ export class WaveformRenderer {
       }
       ctx.stroke();
 
-      // Playhead
+      ctx.strokeStyle = 'rgba(94, 96, 206, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 0; x < width; x++) {
+        const i = Math.floor(x * samplesPerPixel);
+        const val = this.data[i] || 0;
+        const y = midY + val * (drawHeight / 2);
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
       if (this.duration > 0) {
         const playheadX = (this.currentTime / this.duration) * width;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#e6edf3';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(playheadX, padding);
         ctx.lineTo(playheadX, height - padding);
         ctx.stroke();
+
+        ctx.fillStyle = '#e6edf3';
+        ctx.beginPath();
+        ctx.arc(playheadX, padding, 3, 0, Math.PI * 2);
+        ctx.fill();
       }
     } else {
-      ctx.fillStyle = '#666';
-      ctx.font = '12px monospace';
+      ctx.fillStyle = '#6e7681';
+      ctx.font = '11px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Upload a video to see the waveform', width / 2, midY);
     }

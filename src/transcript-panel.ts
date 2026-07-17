@@ -2,109 +2,15 @@ import { saveProject } from './opfs.ts';
 import type { ProjectState, TranscriptWord } from './types.ts';
 import type { CutManager } from './cut-manager.ts';
 
-const STYLES = `
-.tp-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.tp-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 8px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.tp-header h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.tp-word-count {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.tp-flow {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 0;
-  line-height: 2.4;
-  font-size: 14px;
-  min-height: 0;
-  outline: none;
-}
-
-.tp-word {
-  display: inline;
-  padding: 2px 4px;
-  margin: 1px;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-  outline: none;
-  border: 1px solid transparent;
-  position: relative;
-  white-space: nowrap;
-}
-
-.tp-word:hover {
-  background: rgba(79, 140, 255, 0.10);
-}
-
-.tp-word:focus {
-  background: rgba(79, 140, 255, 0.18);
-  border-color: var(--accent);
-}
-
-.tp-word.active {
-  background: rgba(79, 140, 255, 0.25);
-  color: var(--accent);
-  border-color: rgba(79, 140, 255, 0.30);
-}
-
-.tp-word.low-confidence {
-  text-decoration: underline;
-  text-decoration-color: var(--danger);
-  text-decoration-style: wavy;
-  text-underline-offset: 3px;
-}
-
-.tp-word.low-confidence.active {
-  text-decoration-color: var(--accent);
-}
-
-.tp-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--text-secondary);
-  font-size: 14px;
-  text-align: center;
-}
-
-.tp-empty-hint {
-  font-size: 12px;
-  opacity: 0.5;
-  margin-top: 6px;
-}
-`;
-
 export class TranscriptPanel {
   private container: HTMLElement;
   private el!: HTMLElement;
   private flowEl!: HTMLElement;
   private emptyEl!: HTMLElement;
   private wordCountEl: HTMLElement | null = null;
-  private headerEl: HTMLElement | null = null;
+  private searchInputEl: HTMLInputElement | null = null;
+  private modeIndicatorEl: HTMLElement | null = null;
+  private toolbarEl: HTMLElement | null = null;
 
   private words: TranscriptWord[] = [];
   private cachedSpans: HTMLElement[] = [];
@@ -114,17 +20,16 @@ export class TranscriptPanel {
   private cutManager: CutManager | null = null;
 
   private activeWordIndex = -1;
-  private styleEl: HTMLStyleElement;
+  private selectedIndexStart = -1;
+  private selectedIndexEnd = -1;
+  private isDragging = false;
+  private editingIndex = -1;
   private timeUpdateHandler: (() => void) | null = null;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
+  private cutRegionsCache: { start: number; end: number }[] = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
-
-    this.styleEl = document.createElement('style');
-    this.styleEl.textContent = STYLES;
-    document.head.appendChild(this.styleEl);
-
     this.buildDOM();
     this.attachEvents();
   }
@@ -153,10 +58,21 @@ export class TranscriptPanel {
     if (project && project.transcript.length > 0) {
       this.setWords(project.transcript);
     }
+
+    if (this.cutManager) {
+      this.cutManager.onChange((regions) => {
+        this.cutRegionsCache = regions.map((r) => ({ start: r.start, end: r.end }));
+        this.updateCutStyles();
+      });
+      this.cutRegionsCache = this.cutManager.getRegions().map((r) => ({ start: r.start, end: r.end }));
+    }
   }
 
   setWords(words: TranscriptWord[]): void {
     this.words = words.map((w) => ({ ...w }));
+    this.selectedIndexStart = -1;
+    this.selectedIndexEnd = -1;
+    this.editingIndex = -1;
     this.renderWords();
   }
 
@@ -200,7 +116,7 @@ export class TranscriptPanel {
       if (foundIndex >= 0 && foundIndex < this.cachedSpans.length) {
         const activeSpan = this.cachedSpans[foundIndex];
         activeSpan.classList.add('active');
-        if (document.activeElement !== activeSpan) {
+        if (document.activeElement !== activeSpan && this.editingIndex < 0) {
           activeSpan.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
       }
@@ -221,10 +137,6 @@ export class TranscriptPanel {
       this.syncTimer = null;
     }
 
-    if (this.styleEl && this.styleEl.parentNode) {
-      this.styleEl.parentNode.removeChild(this.styleEl);
-    }
-
     this.container.innerHTML = '';
     this.getVideoEl = null;
     this.getProject = null;
@@ -238,29 +150,45 @@ export class TranscriptPanel {
     this.el = document.createElement('div');
     this.el.className = 'tp-panel';
     this.el.innerHTML = `
-      <div class="tp-header">
-        <h3>Transcript</h3>
-        <span class="tp-word-count">0 words</span>
+      <div class="tp-toolbar">
+        <div class="tp-toolbar-info">
+          <span class="tp-mode-indicator" id="tp-mode">Select</span>
+          <span class="tp-word-count">0 words</span>
+        </div>
+        <div class="tp-search-box">
+          <svg class="tp-search-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M11.5 7a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Zm-.82 4.74a6 6 0 1 1 1.06-1.06l3.04 3.04a.75.75 0 1 1-1.06 1.06l-3.04-3.04Z"/></svg>
+          <input type="text" placeholder="Search transcript..." />
+        </div>
       </div>
-      <div class="tp-flow"></div>
+      <div class="tp-flow" tabindex="0"></div>
       <div class="tp-empty">
-        <p>Load a video and transcribe to get started.</p>
-        <p class="tp-empty-hint">Click to seek. Double-click to edit. Arrow keys to navigate.</p>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"/></svg>
+        <div class="tp-empty-title">No transcript yet</div>
+        <div class="tp-empty-hint">Load a video and click Transcribe to get started.<br>Click to seek, drag to select, Delete to cut.</div>
       </div>
     `;
 
-    this.headerEl = this.el.querySelector('.tp-header');
+    this.toolbarEl = this.el.querySelector('.tp-toolbar');
     this.wordCountEl = this.el.querySelector('.tp-word-count');
+    this.searchInputEl = this.el.querySelector('.tp-search-box input');
+    this.modeIndicatorEl = this.el.querySelector('#tp-mode');
     this.flowEl = this.el.querySelector('.tp-flow')!;
     this.emptyEl = this.el.querySelector('.tp-empty')!;
   }
 
   private attachEvents(): void {
-    this.flowEl.addEventListener('click', this.handleClick);
+    this.flowEl.addEventListener('mousedown', this.handleMouseDown);
+    this.flowEl.addEventListener('mouseover', this.handleMouseOver);
+    document.addEventListener('mouseup', this.handleMouseUp);
     this.flowEl.addEventListener('dblclick', this.handleDblClick);
     this.flowEl.addEventListener('focusout', this.handleFocusOut);
     this.flowEl.addEventListener('keydown', this.handleKeyDown);
     this.flowEl.addEventListener('input', this.handleInput);
+    this.flowEl.addEventListener('click', this.handleClick);
+
+    this.searchInputEl?.addEventListener('input', () => {
+      this.handleSearch(this.searchInputEl!.value);
+    });
   }
 
   private renderWords(): void {
@@ -283,7 +211,7 @@ export class TranscriptPanel {
       const w = this.words[i];
       const span = document.createElement('span');
       span.className = 'tp-word';
-      span.contentEditable = 'true';
+      span.contentEditable = 'false';
       span.spellcheck = false;
       if (w.confidence < 0.85) {
         span.classList.add('low-confidence');
@@ -303,23 +231,116 @@ export class TranscriptPanel {
     }
 
     this.flowEl.appendChild(fragment);
+    this.updateCutStyles();
+  }
+
+  private updateCutStyles(): void {
+    for (let i = 0; i < this.cachedSpans.length; i++) {
+      const span = this.cachedSpans[i];
+      const start = parseFloat(span.getAttribute('data-start') || '0');
+      const end = parseFloat(span.getAttribute('data-end') || '0');
+
+      let isCut = false;
+      for (const region of this.cutRegionsCache) {
+        if (start >= region.start && end <= region.end) {
+          isCut = true;
+          break;
+        }
+      }
+
+      if (isCut) {
+        span.classList.add('cut');
+      } else {
+        span.classList.remove('cut');
+      }
+    }
   }
 
   private showEmpty(show: boolean): void {
     this.emptyEl.style.display = show ? 'flex' : 'none';
-    if (this.headerEl) {
-      this.headerEl.style.display = show ? 'none' : 'flex';
+    if (this.toolbarEl) {
+      this.toolbarEl.style.display = show ? 'none' : 'flex';
     }
   }
 
   private updateWordCount(): void {
     if (this.wordCountEl) {
       const n = this.words.length;
-      this.wordCountEl.textContent = `${n} word${n !== 1 ? 's' : ''}`;
+      const selected = this.getSelectedCount();
+      let text = `${n} word${n !== 1 ? 's' : ''}`;
+      if (selected > 0) {
+        text += ` · ${selected} selected`;
+      }
+      this.wordCountEl.textContent = text;
     }
   }
 
+  private getSelectedCount(): number {
+    if (this.selectedIndexStart < 0 || this.selectedIndexEnd < 0) return 0;
+    return Math.abs(this.selectedIndexEnd - this.selectedIndexStart) + 1;
+  }
+
+  private getSelectedRange(): { start: number; end: number } | null {
+    if (this.selectedIndexStart < 0 || this.selectedIndexEnd < 0) return null;
+    const lo = Math.min(this.selectedIndexStart, this.selectedIndexEnd);
+    const hi = Math.max(this.selectedIndexStart, this.selectedIndexEnd);
+    return { start: lo, end: hi };
+  }
+
+  private updateSelectionStyles(): void {
+    for (let i = 0; i < this.cachedSpans.length; i++) {
+      this.cachedSpans[i].classList.remove('selected');
+    }
+
+    const range = this.getSelectedRange();
+    if (range) {
+      for (let i = range.start; i <= range.end; i++) {
+        if (i >= 0 && i < this.cachedSpans.length) {
+          this.cachedSpans[i].classList.add('selected');
+        }
+      }
+    }
+    this.updateWordCount();
+  }
+
+  private selectWord(index: number, extend: boolean): void {
+    if (index < 0 || index >= this.words.length) return;
+
+    if (extend && this.selectedIndexStart >= 0) {
+      this.selectedIndexEnd = index;
+    } else {
+      this.selectedIndexStart = index;
+      this.selectedIndexEnd = index;
+    }
+    this.updateSelectionStyles();
+  }
+
+  private clearSelection(): void {
+    this.selectedIndexStart = -1;
+    this.selectedIndexEnd = -1;
+    this.updateSelectionStyles();
+  }
+
+  deleteSelection(): void {
+    const range = this.getSelectedRange();
+    if (!range || !this.cutManager) return;
+
+    const startWord = this.words[range.start];
+    const endWord = this.words[range.end];
+    if (!startWord || !endWord) return;
+
+    this.cutManager.addRegion(
+      startWord.start,
+      endWord.end,
+      'delete',
+      `Deleted: "${this.words.slice(range.start, range.end + 1).map((w) => w.word).join(' ')}"`,
+    );
+
+    this.clearSelection();
+  }
+
   private handleClick = (e: MouseEvent): void => {
+    if (this.editingIndex >= 0) return;
     const target = (e.target as HTMLElement).closest<HTMLElement>('.tp-word');
     if (!target) return;
 
@@ -332,38 +353,118 @@ export class TranscriptPanel {
     }
   };
 
+  private handleMouseDown = (e: MouseEvent): void => {
+    if (this.editingIndex >= 0) return;
+    const target = (e.target as HTMLElement).closest<HTMLElement>('.tp-word');
+    if (!target) return;
+
+    const index = parseInt(target.getAttribute('data-index') || '-1', 10);
+    if (index < 0 || index >= this.words.length) return;
+
+    this.isDragging = true;
+    const extend = e.shiftKey;
+    this.selectWord(index, extend);
+  };
+
+  private handleMouseOver = (e: MouseEvent): void => {
+    if (!this.isDragging) return;
+    const target = (e.target as HTMLElement).closest<HTMLElement>('.tp-word');
+    if (!target) return;
+
+    const index = parseInt(target.getAttribute('data-index') || '-1', 10);
+    if (index < 0 || index >= this.words.length) return;
+
+    this.selectedIndexEnd = index;
+    this.updateSelectionStyles();
+  };
+
+  private handleMouseUp = (): void => {
+    this.isDragging = false;
+  };
+
   private handleDblClick = (e: MouseEvent): void => {
     const target = (e.target as HTMLElement).closest<HTMLElement>('.tp-word');
     if (!target) return;
 
-    target.focus();
+    const index = parseInt(target.getAttribute('data-index') || '-1', 10);
+    if (index < 0 || index >= this.words.length) return;
+
+    this.enterEditMode(index);
+  };
+
+  private enterEditMode(index: number): void {
+    if (index < 0 || index >= this.cachedSpans.length) return;
+
+    if (this.editingIndex >= 0 && this.editingIndex !== index) {
+      this.exitEditMode();
+    }
+
+    this.editingIndex = index;
+    const span = this.cachedSpans[index];
+    span.contentEditable = 'true';
+    span.classList.add('editing');
+    span.focus();
 
     const range = document.createRange();
-    range.selectNodeContents(target);
+    range.selectNodeContents(span);
     const sel = window.getSelection();
     if (sel) {
       sel.removeAllRanges();
       sel.addRange(range);
     }
-  };
+
+    if (this.modeIndicatorEl) {
+      this.modeIndicatorEl.textContent = 'Edit';
+      this.modeIndicatorEl.classList.add('edit-mode');
+    }
+  }
+
+  private exitEditMode(): void {
+    if (this.editingIndex < 0) return;
+
+    const span = this.cachedSpans[this.editingIndex];
+    span.contentEditable = 'false';
+    span.classList.remove('editing');
+
+    this.editingIndex = -1;
+
+    if (this.modeIndicatorEl) {
+      this.modeIndicatorEl.textContent = 'Select';
+      this.modeIndicatorEl.classList.remove('edit-mode');
+    }
+
+    this.scheduleSync();
+  }
 
   private handleFocusOut = (e: FocusEvent): void => {
     const target = e.target as HTMLElement;
-    if (!target.classList.contains('tp-word')) return;
-    this.scheduleSync();
+    if (!target.classList.contains('tp-word') || !target.classList.contains('editing')) return;
+    this.exitEditMode();
   };
 
   private handleInput = (_e: Event): void => {
-    this.scheduleSync();
+    if (this.editingIndex >= 0) {
+      this.scheduleSync();
+    }
   };
 
   private handleKeyDown = (e: KeyboardEvent): void => {
+    if (this.editingIndex >= 0) {
+      this.handleEditKeyDown(e);
+      return;
+    }
+
+    this.handleSelectionKeyDown(e);
+  };
+
+  private handleEditKeyDown = (e: KeyboardEvent): void => {
     const target = e.target as HTMLElement;
     if (!target.classList.contains('tp-word')) return;
 
     if (e.key === 'Enter') {
       e.preventDefault();
       target.blur();
+      this.exitEditMode();
       return;
     }
 
@@ -374,61 +475,61 @@ export class TranscriptPanel {
         target.textContent = this.words[index].word;
       }
       target.blur();
+      this.exitEditMode();
+      return;
+    }
+  };
+
+  private handleSelectionKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      this.deleteSelection();
       return;
     }
 
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-
-    const range = sel.getRangeAt(0);
-    if (!range.collapsed) return;
-
-    const node = range.startContainer;
-    const offset = range.startOffset;
-
-    if (e.key === 'ArrowLeft') {
-      if (isAtStartOfWord(node, target, offset)) {
-        e.preventDefault();
-        this.navigateWord(target, -1);
-      }
+    if (e.key === 'Escape') {
+      this.clearSelection();
       return;
     }
 
-    if (e.key === 'ArrowRight') {
-      if (isAtEndOfWord(node, target, offset)) {
-        e.preventDefault();
-        this.navigateWord(target, 1);
+    if (e.ctrlKey && e.key === 'a') {
+      e.preventDefault();
+      this.selectedIndexStart = 0;
+      this.selectedIndexEnd = this.words.length - 1;
+      this.updateSelectionStyles();
+      return;
+    }
+
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const range = this.getSelectedRange();
+      const current = range ? (e.key === 'ArrowLeft' ? range.start : range.end) : 0;
+      const next = e.key === 'ArrowLeft' ? Math.max(0, current - 1) : Math.min(this.words.length - 1, current + 1);
+      this.selectWord(next, e.shiftKey);
+
+      const video = this.getVideoEl?.();
+      if (video) {
+        video.currentTime = this.words[next].start;
       }
       return;
     }
   };
 
-  private navigateWord(currentSpan: HTMLElement, direction: number): void {
-    const index = parseInt(currentSpan.getAttribute('data-index') || '-1', 10);
-    const newIndex = index + direction;
-
-    if (newIndex < 0 || newIndex >= this.words.length) return;
-
-    const video = this.getVideoEl?.();
-    if (video) {
-      video.currentTime = this.words[newIndex].start;
+  private handleSearch(query: string): void {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      for (const span of this.cachedSpans) {
+        span.style.background = '';
+      }
+      return;
     }
 
-    if (newIndex < this.cachedSpans.length) {
-      const nextSpan = this.cachedSpans[newIndex];
-      nextSpan.focus();
-
-      const textNode = nextSpan.firstChild;
-      if (textNode && textNode.nodeType === Node.TEXT_NODE) {
-        const pos = direction < 0 ? (textNode.textContent?.length || 0) : 0;
-        const r = document.createRange();
-        r.setStart(textNode, pos);
-        r.collapse(true);
-        const s = window.getSelection();
-        if (s) {
-          s.removeAllRanges();
-          s.addRange(r);
-        }
+    for (let i = 0; i < this.cachedSpans.length; i++) {
+      const word = this.words[i].word.toLowerCase();
+      if (word.includes(q)) {
+        this.cachedSpans[i].style.background = 'rgba(210, 153, 34, 0.2)';
+      } else {
+        this.cachedSpans[i].style.background = '';
       }
     }
   }
@@ -444,6 +545,8 @@ export class TranscriptPanel {
   }
 
   private syncFromDOM(): void {
+    if (this.editingIndex < 0) return;
+
     const spans = this.cachedSpans;
     const newWords: TranscriptWord[] = [];
     let tokenCountChanged = false;
@@ -479,26 +582,12 @@ export class TranscriptPanel {
       }
     }
 
-    if (this.cutManager) {
-      const newStarts = new Set(newWords.map((w) => w.start.toFixed(3)));
-      for (const w of this.words) {
-        if (!newStarts.has(w.start.toFixed(3))) {
-          this.cutManager.addRegion(w.start, w.end, 'delete', `Deleted: "${w.word}"`);
-        }
-      }
-    }
-
     if (transcriptEqual(this.words, newWords)) return;
 
     this.words = newWords;
 
     if (tokenCountChanged) {
       this.renderWords();
-    } else {
-      for (let i = 0; i < this.words.length && i < spans.length; i++) {
-        spans[i].setAttribute('data-start', String(this.words[i].start));
-        spans[i].setAttribute('data-end', String(this.words[i].end));
-      }
     }
 
     this.saveTranscript();
@@ -521,42 +610,6 @@ export class TranscriptPanel {
       // save failed — words remain in memory
     }
   }
-}
-
-function isAtStartOfWord(node: Node, wordEl: HTMLElement, offset: number): boolean {
-  if (offset !== 0) return false;
-  let current: Node | null = node;
-  while (current && current !== wordEl) {
-    for (let child = current.previousSibling; child; child = child.previousSibling) {
-      if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').trim().length > 0) {
-        return false;
-      }
-      if (child.nodeType === Node.ELEMENT_NODE) {
-        return false;
-      }
-    }
-    current = current.parentNode;
-  }
-  return current === wordEl;
-}
-
-function isAtEndOfWord(node: Node, wordEl: HTMLElement, offset: number): boolean {
-  if (node.nodeType === Node.TEXT_NODE) {
-    if (offset < (node.textContent || '').length) return false;
-  }
-  let current: Node | null = node;
-  while (current && current !== wordEl) {
-    for (let child = current.nextSibling; child; child = child.nextSibling) {
-      if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').trim().length > 0) {
-        return false;
-      }
-      if (child.nodeType === Node.ELEMENT_NODE) {
-        return false;
-      }
-    }
-    current = current.parentNode;
-  }
-  return current === wordEl;
 }
 
 function transcriptEqual(a: TranscriptWord[], b: TranscriptWord[]): boolean {

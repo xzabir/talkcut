@@ -3,79 +3,7 @@ import { saveProject } from './opfs.ts';
 import type { ProjectState, TranscriptWord } from './types.ts';
 import type { TranscriptPanel } from './transcript-panel.ts';
 import { extractAudioFromVideoElement } from './audio-extractor.ts';
-
-const STYLES = `
-.tc-container {
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--border, #2a2a4a);
-  padding-bottom: 10px;
-  margin-bottom: 0;
-}
-
-.tc-btn-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.tc-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: var(--radius, 8px);
-  background: var(--accent, #4f8cff);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
-  white-space: nowrap;
-}
-
-.tc-btn:hover:not(:disabled) {
-  background: var(--accent-hover, #3a6fd8);
-}
-
-.tc-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.tc-progress {
-  margin-top: 8px;
-}
-
-.tc-progress-bar {
-  width: 100%;
-  height: 4px;
-  background: var(--bg-primary, #1a1a2e);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.tc-progress-fill {
-  height: 100%;
-  width: 0%;
-  background: var(--accent, #4f8cff);
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
-
-.tc-progress-label {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--text-secondary, #a0a0b0);
-}
-
-.tc-error {
-  padding: 8px 10px;
-  margin-top: 6px;
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid var(--danger, #ef4444);
-  border-radius: var(--radius, 8px);
-  color: var(--danger, #ef4444);
-  font-size: 12px;
-}
-`;
+import { toast } from './toast.ts';
 
 export class TranscribeButton {
   private panel: TranscriptPanel;
@@ -84,9 +12,11 @@ export class TranscribeButton {
   private styleEl: HTMLStyleElement;
 
   private buttonEl: HTMLButtonElement;
+  private cancelBtnEl: HTMLButtonElement;
   private progressEl: HTMLElement;
   private progressFill: HTMLElement;
   private progressLabel: HTMLElement;
+  private progressEta: HTMLElement;
   private errorEl: HTMLElement;
 
   private getVideoElement: (() => HTMLVideoElement) | null = null;
@@ -95,35 +25,45 @@ export class TranscribeButton {
   private getModelId: (() => string) | null = null;
 
   private isTranscribing = false;
+  private transcribeStartTime = 0;
 
   constructor(panel: TranscriptPanel) {
     this.panel = panel;
     this.service = new TranscriptionService();
 
     this.styleEl = document.createElement('style');
-    this.styleEl.textContent = STYLES;
     document.head.appendChild(this.styleEl);
 
     this.el = document.createElement('div');
     this.el.className = 'tc-container';
     this.el.innerHTML = `
       <div class="tc-btn-row">
-        <button class="tc-btn">Transcribe</button>
+        <button class="tc-btn">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 8a6.5 6.5 0 1 1 13 0A6.5 6.5 0 0 1 1.5 8Zm6.5-5a5 5 0 1 0 0 10 5 5 0 0 0 0-10ZM3 8a5 5 0 0 1 10 0H3Z"/></svg>
+          Transcribe
+        </button>
+        <button class="tc-cancel-btn" style="display:none;">Cancel</button>
       </div>
       <div class="tc-progress" style="display:none;">
         <div class="tc-progress-bar"><div class="tc-progress-fill"></div></div>
-        <p class="tc-progress-label"></p>
+        <div class="tc-progress-label">
+          <span class="tc-progress-label-text"></span>
+          <span class="tc-progress-eta"></span>
+        </div>
       </div>
       <div class="tc-error" style="display:none;"></div>
     `;
 
     this.buttonEl = this.el.querySelector('.tc-btn')!;
+    this.cancelBtnEl = this.el.querySelector('.tc-cancel-btn')!;
     this.progressEl = this.el.querySelector('.tc-progress')!;
     this.progressFill = this.el.querySelector('.tc-progress-fill')!;
-    this.progressLabel = this.el.querySelector('.tc-progress-label')!;
+    this.progressLabel = this.el.querySelector('.tc-progress-label-text')!;
+    this.progressEta = this.el.querySelector('.tc-progress-eta')!;
     this.errorEl = this.el.querySelector('.tc-error')!;
 
     this.buttonEl.addEventListener('click', () => this.handleTranscribe());
+    this.cancelBtnEl.addEventListener('click', () => this.cancelTranscription());
     this.buttonEl.disabled = true;
   }
 
@@ -137,7 +77,6 @@ export class TranscribeButton {
     this.getProject = getProject;
     this.onProjectUpdated = onProjectUpdated;
     this.getModelId = getModelId;
-
     this.buttonEl.disabled = false;
   }
 
@@ -178,8 +117,10 @@ export class TranscribeButton {
     }
 
     this.isTranscribing = true;
+    this.transcribeStartTime = performance.now();
     this.hideError();
     this.showProgress(true);
+    this.cancelBtnEl.style.display = '';
     this.updateProgress(0, 'Extracting audio...');
 
     try {
@@ -206,18 +147,23 @@ export class TranscribeButton {
         onComplete: (words: TranscriptWord[]) => {
           this.isTranscribing = false;
           this.showProgress(false);
+          this.cancelBtnEl.style.display = 'none';
           this.panel.setWords(words);
           this.saveResults(words);
+          toast.success(`Transcription complete: ${words.length} words`);
         },
         onError: (error: string) => {
           this.isTranscribing = false;
           this.showProgress(false);
+          this.cancelBtnEl.style.display = 'none';
           this.showError(error);
+          toast.error('Transcription failed');
         },
       });
     } catch (err) {
       this.isTranscribing = false;
       this.showProgress(false);
+      this.cancelBtnEl.style.display = 'none';
       this.showError(err instanceof Error ? err.message : String(err));
     }
   }
@@ -226,6 +172,9 @@ export class TranscribeButton {
     if (this.isTranscribing) {
       this.service.cancel();
       this.isTranscribing = false;
+      this.showProgress(false);
+      this.cancelBtnEl.style.display = 'none';
+      toast.info('Transcription cancelled');
     }
   }
 
@@ -254,6 +203,21 @@ export class TranscribeButton {
   private updateProgress(progress: number, message: string): void {
     this.progressFill.style.width = `${Math.round(progress * 100)}%`;
     this.progressLabel.textContent = message;
+
+    if (progress > 0.05 && progress < 1) {
+      const elapsed = (performance.now() - this.transcribeStartTime) / 1000;
+      const total = elapsed / progress;
+      const remaining = total - elapsed;
+      const m = Math.floor(remaining / 60);
+      const s = Math.floor(remaining % 60);
+      if (m > 0) {
+        this.progressEta.textContent = `~${m}m ${s}s left`;
+      } else {
+        this.progressEta.textContent = `~${s}s left`;
+      }
+    } else {
+      this.progressEta.textContent = '';
+    }
   }
 
   private showError(message: string): void {

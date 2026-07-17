@@ -1,6 +1,5 @@
 export class KeyboardShortcuts {
   private overlay: HTMLDivElement | null = null;
-  private styleEl: HTMLStyleElement | null = null;
   private mounted = false;
   private boundHandler: ((e: KeyboardEvent) => void) | null = null;
 
@@ -45,82 +44,6 @@ export class KeyboardShortcuts {
   private showOverlay(): void {
     this.removeOverlay();
 
-    this.styleEl = document.createElement('style');
-    this.styleEl.textContent = `
-      .kbs-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-        animation: kbs-fade-in 0.15s ease;
-      }
-      @keyframes kbs-fade-in {
-        from { opacity: 0; }
-        to { opacity: 1; }
-      }
-      .kbs-card {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 24px 28px;
-        max-width: 440px;
-        width: 90%;
-        max-height: 80vh;
-        overflow-y: auto;
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
-      }
-      .kbs-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: var(--accent);
-        margin-bottom: 18px;
-      }
-      .kbs-section {
-        margin-bottom: 16px;
-      }
-      .kbs-section:last-child {
-        margin-bottom: 0;
-      }
-      .kbs-section-title {
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: var(--text-secondary);
-        margin-bottom: 8px;
-        padding-bottom: 4px;
-        border-bottom: 1px solid var(--border);
-      }
-      .kbs-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 3px 0;
-        font-size: 13px;
-      }
-      .kbs-key {
-        display: inline-block;
-        background: var(--bg-primary);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        padding: 1px 6px;
-        font-size: 11px;
-        font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-        color: var(--text-primary);
-        margin-right: 2px;
-        white-space: nowrap;
-      }
-      .kbs-desc {
-        color: var(--text-secondary);
-        text-align: right;
-        flex-shrink: 0;
-      }
-    `;
-    document.head.appendChild(this.styleEl);
-
     this.overlay = document.createElement('div');
     this.overlay.className = 'kbs-overlay';
     this.overlay.addEventListener('click', (e) => {
@@ -138,17 +61,57 @@ export class KeyboardShortcuts {
             <span class="kbs-desc">Play / Pause</span>
           </div>
           <div class="kbs-row">
-            <span><span class="kbs-key">←</span></span>
+            <span><span class="kbs-key">&larr;</span></span>
             <span class="kbs-desc">Seek back 5s</span>
           </div>
           <div class="kbs-row">
-            <span><span class="kbs-key">→</span></span>
+            <span><span class="kbs-key">&rarr;</span></span>
             <span class="kbs-desc">Seek forward 5s</span>
           </div>
         </div>
 
         <div class="kbs-section">
-          <div class="kbs-section-title">Editing</div>
+          <div class="kbs-section-title">Transcript Editing</div>
+          <div class="kbs-row">
+            <span><span class="kbs-key">Click</span> word</span>
+            <span class="kbs-desc">Select + seek to word</span>
+          </div>
+          <div class="kbs-row">
+            <span><span class="kbs-key">Drag</span> words</span>
+            <span class="kbs-desc">Select range</span>
+          </div>
+          <div class="kbs-row">
+            <span><span class="kbs-key">Shift</span> + <span class="kbs-key">Click</span></span>
+            <span class="kbs-desc">Extend selection</span>
+          </div>
+          <div class="kbs-row">
+            <span><span class="kbs-key">Double-click</span> word</span>
+            <span class="kbs-desc">Edit word text</span>
+          </div>
+          <div class="kbs-row">
+            <span><span class="kbs-key">Delete</span> / <span class="kbs-key">Backspace</span></span>
+            <span class="kbs-desc">Cut selected words</span>
+          </div>
+          <div class="kbs-row">
+            <span><span class="kbs-key">&larr;</span> / <span class="kbs-key">&rarr;</span></span>
+            <span class="kbs-desc">Navigate words</span>
+          </div>
+          <div class="kbs-row">
+            <span><span class="kbs-key">Ctrl</span> + <span class="kbs-key">A</span></span>
+            <span class="kbs-desc">Select all words</span>
+          </div>
+          <div class="kbs-row">
+            <span><span class="kbs-key">Enter</span> in edit mode</span>
+            <span class="kbs-desc">Finish editing</span>
+          </div>
+          <div class="kbs-row">
+            <span><span class="kbs-key">Esc</span></span>
+            <span class="kbs-desc">Cancel selection / editing</span>
+          </div>
+        </div>
+
+        <div class="kbs-section">
+          <div class="kbs-section-title">Actions</div>
           <div class="kbs-row">
             <span><span class="kbs-key">Ctrl</span> + <span class="kbs-key">Z</span></span>
             <span class="kbs-desc">Undo</span>
@@ -158,28 +121,12 @@ export class KeyboardShortcuts {
             <span class="kbs-desc">Redo</span>
           </div>
           <div class="kbs-row">
-            <span><span class="kbs-key">Ctrl</span> + <span class="kbs-key">Y</span></span>
-            <span class="kbs-desc">Redo</span>
-          </div>
-        </div>
-
-        <div class="kbs-section">
-          <div class="kbs-section-title">Transcript</div>
-          <div class="kbs-row">
-            <span><span class="kbs-key">Click</span> word</span>
-            <span class="kbs-desc">Seek to word</span>
+            <span><span class="kbs-key">Ctrl</span> + <span class="kbs-key">S</span></span>
+            <span class="kbs-desc">Save project</span>
           </div>
           <div class="kbs-row">
-            <span><span class="kbs-key">←</span> / <span class="kbs-key">→</span> in transcript</span>
-            <span class="kbs-desc">Navigate words</span>
-          </div>
-          <div class="kbs-row">
-            <span><span class="kbs-key">Enter</span> in transcript</span>
-            <span class="kbs-desc">Finish editing</span>
-          </div>
-          <div class="kbs-row">
-            <span><span class="kbs-key">Esc</span> in transcript</span>
-            <span class="kbs-desc">Cancel editing</span>
+            <span><span class="kbs-key">Ctrl</span> + <span class="kbs-key">E</span></span>
+            <span class="kbs-desc">Go to Export</span>
           </div>
         </div>
 
@@ -204,10 +151,6 @@ export class KeyboardShortcuts {
     if (this.overlay) {
       this.overlay.remove();
       this.overlay = null;
-    }
-    if (this.styleEl) {
-      this.styleEl.remove();
-      this.styleEl = null;
     }
   }
 }

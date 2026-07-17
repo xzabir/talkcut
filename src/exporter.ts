@@ -1,4 +1,4 @@
-import type { CutRegion, ExportProgress } from './types.ts';
+import type { CutRegion, ExportProgress, ExportFormat } from './types.ts';
 import { Muxer, ArrayBufferTarget } from 'webm-muxer';
 
 export interface ExportCallbacks {
@@ -13,7 +13,7 @@ interface KeepSegment {
   deletedBefore: number;
 }
 
-export function isExportSupported(): boolean {
+export function isWebCodecsExportSupported(): boolean {
   try {
     return (
       typeof VideoEncoder !== 'undefined' &&
@@ -24,6 +24,17 @@ export function isExportSupported(): boolean {
   } catch {
     return false;
   }
+}
+
+export function isExportSupported(): boolean {
+  return isWebCodecsExportSupported();
+}
+
+export function getSupportedExportFormats(): ExportFormat[] {
+  if (isWebCodecsExportSupported()) {
+    return ['webm', 'mp4'];
+  }
+  return ['mp4'];
 }
 
 function snapRegions(regions: CutRegion[]): CutRegion[] {
@@ -74,20 +85,35 @@ function isInCutRegion(timeS: number, regions: CutRegion[]): boolean {
   return false;
 }
 
+const STALL_TIMEOUT_MS = 20000;
+
 export async function exportVideo(
   videoFile: File,
   cutRegions: CutRegion[],
   callbacks: ExportCallbacks,
+  format: ExportFormat = 'webm',
 ): Promise<void> {
-  if (!isExportSupported()) {
-    callbacks.onError('WebCodecs not available. Please use Chrome or Edge.');
-    return;
+  if (format === 'webm') {
+    if (!isWebCodecsExportSupported()) {
+      callbacks.onError('WebM export requires Chrome or Edge (WebCodecs support). Try MP4 export instead.');
+      return;
+    }
+    return exportWebM(videoFile, cutRegions, callbacks);
   }
+  return exportMp4(videoFile, cutRegions, callbacks);
+}
 
+async function exportWebM(
+  videoFile: File,
+  cutRegions: CutRegion[],
+  callbacks: ExportCallbacks,
+): Promise<void> {
   let totalFrames = 0;
   let processedFrames = 0;
+  let lastProgressTime = performance.now();
 
   const reportProgress = (partial: Omit<ExportProgress, 'totalFrames' | 'processedFrames'>): void => {
+    lastProgressTime = performance.now();
     callbacks.onProgress({
       totalFrames,
       processedFrames,
@@ -97,6 +123,16 @@ export async function exportVideo(
 
   let video: HTMLVideoElement | null = null;
   let blobUrl = '';
+  let videoEncoder: VideoEncoder | null = null;
+  let audioEncoder: AudioEncoder | null = null;
+
+  const stallChecker = setInterval(() => {
+    if (performance.now() - lastProgressTime > STALL_TIMEOUT_MS) {
+      callbacks.onError('Export stalled - no progress for 20 seconds. The video format may not be supported.');
+      try { (videoEncoder as VideoEncoder | null)?.close(); } catch { /* */ }
+      try { (audioEncoder as AudioEncoder | null)?.close(); } catch { /* */ }
+    }
+  }, 5000);
 
   try {
     blobUrl = URL.createObjectURL(videoFile);
@@ -164,10 +200,15 @@ export async function exportVideo(
     let videoEncodeError: string | null = null;
     let pendingVideoFrames = 0;
     let videoEncodeDone: (() => void) | null = null;
+    let firstVideoTimestamp: number | null = null;
 
-    const videoEncoder = new VideoEncoder({
+    videoEncoder = new VideoEncoder({
       output: (chunk, meta) => {
-        muxer.addVideoChunk(chunk, meta);
+        try {
+          muxer.addVideoChunk(chunk, meta);
+        } catch (e) {
+          videoEncodeError = `Muxer error: ${(e as Error).message}`;
+        }
         pendingVideoFrames--;
         if (pendingVideoFrames === 0 && videoEncodeDone) {
           videoEncodeDone();
@@ -204,6 +245,12 @@ export async function exportVideo(
         isFirstSegment,
         () => { pendingVideoFrames++; },
         () => { pendingVideoFrames--; },
+        (adjustedTimeS) => {
+          if (firstVideoTimestamp === null) {
+            firstVideoTimestamp = adjustedTimeS;
+          }
+          return Math.round((adjustedTimeS - firstVideoTimestamp) * 1_000_000);
+        },
         (count) => {
           processedFrames += count;
           if (processedFrames % 30 === 0) {
@@ -229,7 +276,7 @@ export async function exportVideo(
       videoEncodeDone = () => {
         if (pendingVideoFrames === 0) resolve();
       };
-      videoEncoder.flush().then(() => {
+      videoEncoder!.flush().then(() => {
         if (pendingVideoFrames === 0) resolve();
       });
     });
@@ -237,17 +284,23 @@ export async function exportVideo(
     if (videoEncodeError) throw new Error(`Video encoder: ${videoEncodeError}`);
 
     videoEncoder.close();
+    videoEncoder = null;
     videoEncodeDone = null;
 
     reportProgress({
       status: 'encoding',
-      progress: totalFrames > 0 ? Math.min(1, processedFrames / totalFrames) : 0,
+      progress: 0.80,
       message: 'Processing audio...',
     });
 
-    const audioResult = await processAudio(videoFile, snapped, muxer);
+    const audioResult = await processAudio(videoFile, snapped, muxer, (audioProgress) => {
+      reportProgress({
+        status: 'encoding',
+        progress: 0.80 + audioProgress * 0.15,
+        message: `Processing audio... ${Math.round(audioProgress * 100)}%`,
+      });
+    });
     if (!audioResult.ok) {
-      // Continue without audio — surface a warning but don't fail
       console.warn('Audio processing skipped:', audioResult.error);
     }
 
@@ -262,6 +315,8 @@ export async function exportVideo(
     const webmData = target.buffer!;
     const blob = new Blob([webmData as unknown as BlobPart], { type: 'video/webm' });
 
+    clearInterval(stallChecker);
+
     reportProgress({
       status: 'done',
       progress: 1,
@@ -270,10 +325,13 @@ export async function exportVideo(
 
     callbacks.onComplete(blob);
   } catch (e) {
+    clearInterval(stallChecker);
     callbacks.onError((e as Error).message);
   } finally {
+    if (videoEncoder) { try { (videoEncoder as VideoEncoder).close(); } catch { /* */ } }
+    if (audioEncoder) { try { (audioEncoder as AudioEncoder).close(); } catch { /* */ } }
     if (video) {
-      try { video.pause(); } catch { /* ignore */ }
+      try { video.pause(); } catch { /* */ }
       if (video.parentNode) {
         video.parentNode.removeChild(video);
       }
@@ -294,6 +352,7 @@ async function processKeepSegment(
   forceKeyframe: boolean,
   onEncodeStart: () => void,
   onEncodeError: () => void,
+  getTimestamp: (adjustedTimeS: number) => number,
   onFrameCaptured: (count: number) => void,
 ): Promise<void> {
   const deletedBefore = segment.deletedBefore;
@@ -303,19 +362,48 @@ async function processKeepSegment(
   return new Promise<void>((resolve, reject) => {
     let lastMediaTime = -1;
     let resolved = false;
-    let frameCount = 0;
     let keyframeForced = !forceKeyframe;
+    let lastFrameTime = performance.now();
+    let stallTimer: ReturnType<typeof setInterval> | null = null;
 
     function done(): void {
       if (resolved) return;
       resolved = true;
+      if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
+      video.removeEventListener('ended', onEnded);
+      video.removeEventListener('pause', onPaused);
       resolve();
     }
+
+    function onEnded(): void {
+      if (resolved) return;
+      if (video.currentTime < segmentEnd - 0.5) {
+        video.currentTime = segmentStart;
+        video.play().catch(() => { done(); });
+      } else {
+        done();
+      }
+    }
+
+    function onPaused(): void {
+      if (resolved) return;
+      if (!video.ended) {
+        video.play().catch(() => { done(); });
+      }
+    }
+
+    stallTimer = setInterval(() => {
+      if (resolved) { if (stallTimer) { clearInterval(stallTimer); stallTimer = null; } return; }
+      if (performance.now() - lastFrameTime > 10000) {
+        done();
+      }
+    }, 3000);
 
     function onFrameCallback(now: number, metadata: VideoFrameCallbackMetadata): void {
       void now;
       if (resolved) return;
 
+      lastFrameTime = performance.now();
       const mediaTime = metadata.mediaTime;
 
       if (Math.abs(mediaTime - lastMediaTime) < 0.0005) {
@@ -340,6 +428,7 @@ async function processKeepSegment(
       }
 
       const adjustedTimeS = mediaTime - deletedBefore;
+      const timestamp = getTimestamp(adjustedTimeS);
 
       try {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -348,22 +437,18 @@ async function processKeepSegment(
         return;
       }
 
-      const frame = new VideoFrame(canvas, {
-        timestamp: Math.round(adjustedTimeS * 1_000_000),
-      });
+      const frame = new VideoFrame(canvas, { timestamp });
 
       try {
         onEncodeStart();
         encoder.encode(frame, { keyFrame: !keyframeForced });
         keyframeForced = true;
-        frameCount++;
-        onFrameCaptured(frameCount);
+        onFrameCaptured(1);
       } catch {
         onEncodeError();
       }
 
       frame.close();
-      frameCount = 0;
 
       if (video.paused || video.ended) {
         done();
@@ -377,6 +462,8 @@ async function processKeepSegment(
 
     function onSeeked(): void {
       video.removeEventListener('seeked', onSeeked);
+      video.addEventListener('ended', onEnded);
+      video.addEventListener('pause', onPaused);
       video.requestVideoFrameCallback(onFrameCallback);
       video.play().catch((e) => {
         reject(new Error(`Video playback failed: ${e.message}`));
@@ -391,6 +478,7 @@ async function processAudio(
   videoFile: File,
   cutRegions: CutRegion[],
   muxer: Muxer<ArrayBufferTarget>,
+  onProgress?: (progress: number) => void,
 ): Promise<{ ok: boolean; error?: string }> {
   const arrayBuffer = await videoFile.arrayBuffer();
   const audioContext = new AudioContext();
@@ -403,55 +491,84 @@ async function processAudio(
     return { ok: false, error: `Audio decode failed: ${(e as Error).message}` };
   }
 
-  const { sampleRate, numberOfChannels, length } = audioBuffer;
-  const duration = length / sampleRate;
+  const { sampleRate: inputSampleRate, numberOfChannels, length } = audioBuffer;
+  const duration = length / inputSampleRate;
 
-  const channels: Float32Array[] = [];
-  for (let ch = 0; ch < numberOfChannels; ch++) {
-    channels.push(new Float32Array(audioBuffer.getChannelData(ch)));
+  const outputSampleRate = 48000;
+
+  let channels: Float32Array[];
+  let sampleRate: number;
+
+  if (outputSampleRate !== inputSampleRate) {
+    void audioContext.close();
+    const offlineCtx = new OfflineAudioContext(1, Math.ceil(duration * outputSampleRate), outputSampleRate);
+    const monoBuffer = offlineCtx.createBuffer(1, length, inputSampleRate);
+    const monoData = new Float32Array(length);
+    for (let i = 0; i < length; i++) {
+      let sum = 0;
+      for (let ch = 0; ch < numberOfChannels; ch++) {
+        sum += audioBuffer.getChannelData(ch)[i];
+      }
+      monoData[i] = sum / numberOfChannels;
+    }
+    monoBuffer.copyToChannel(monoData, 0);
+    const source = offlineCtx.createBufferSource();
+    source.buffer = monoBuffer;
+    source.connect(offlineCtx.destination);
+    source.start(0);
+    const rendered = await offlineCtx.startRendering();
+    channels = [new Float32Array(rendered.getChannelData(0))];
+    sampleRate = outputSampleRate;
+  } else {
+    channels = [];
+    for (let ch = 0; ch < numberOfChannels; ch++) {
+      channels.push(new Float32Array(audioBuffer.getChannelData(ch)));
+    }
+    sampleRate = inputSampleRate;
+    void audioContext.close();
   }
-  void audioContext.close();
 
   const snapped = snapRegions(cutRegions);
   const keepSegments = invertToKeepSegments(snapped, duration);
   if (keepSegments.length === 0) return { ok: true };
 
   const CHUNK_SECONDS = 1.0;
-  const outputSampleRate = 48000;
+  let firstAudioTimestamp: number | null = null;
+
+  let totalSamples = 0;
+  let processedSamples = 0;
+  for (const seg of keepSegments) {
+    totalSamples += Math.min(Math.floor(seg.end * sampleRate), length) - Math.floor(seg.start * sampleRate);
+  }
 
   return new Promise<{ ok: boolean; error?: string }>((resolve) => {
-    let pending = 0;
-    let flushed = false;
     let encodeError: string | null = null;
+    let resolved = false;
 
-    function checkDone(): void {
-      if (pending === 0 && flushed) {
-        audioEncoder.close();
-        if (encodeError) {
-          resolve({ ok: false, error: encodeError });
-        } else {
-          resolve({ ok: true });
-        }
-      }
+    function finish(result: { ok: boolean; error?: string }): void {
+      if (resolved) return;
+      resolved = true;
+      try { audioEncoder.close(); } catch { /* */ }
+      resolve(result);
     }
 
     const audioEncoder = new AudioEncoder({
       output: (chunk) => {
-        muxer.addAudioChunk(chunk, undefined);
-        pending--;
-        checkDone();
+        try {
+          muxer.addAudioChunk(chunk, undefined);
+        } catch (e) {
+          encodeError = `Audio muxer error: ${(e as Error).message}`;
+        }
       },
       error: (e) => {
         encodeError = e.message;
-        pending = 0;
-        flushed = true;
-        checkDone();
+        finish({ ok: false, error: encodeError });
       },
     });
 
     audioEncoder.configure({
       codec: 'opus',
-      sampleRate: outputSampleRate,
+      sampleRate,
       numberOfChannels: 1,
       bitrate: 128_000,
     });
@@ -470,19 +587,24 @@ async function processAudio(
           const frameCount = Math.min(chunkFrames, totalInSegment - offset);
           const sampleOffset = startSample + offset;
           const timeOffsetS = offset / sampleRate;
-          const timestamp = Math.round((adjustedStartS + timeOffsetS) * 1_000_000);
+          let timestamp = Math.round((adjustedStartS + timeOffsetS) * 1_000_000);
+
+          if (firstAudioTimestamp === null) {
+            firstAudioTimestamp = timestamp;
+          }
+          timestamp -= firstAudioTimestamp;
 
           let monoChunk: Float32Array;
-          if (numberOfChannels === 1) {
+          if (channels.length === 1) {
             monoChunk = channels[0].subarray(sampleOffset, sampleOffset + frameCount);
           } else {
             monoChunk = new Float32Array(frameCount);
             for (let i = 0; i < frameCount; i++) {
               let sum = 0;
-              for (let ch = 0; ch < numberOfChannels; ch++) {
+              for (let ch = 0; ch < channels.length; ch++) {
                 sum += channels[ch][sampleOffset + i];
               }
-              monoChunk[i] = sum / numberOfChannels;
+              monoChunk[i] = sum / channels.length;
             }
           }
 
@@ -495,18 +617,162 @@ async function processAudio(
             data: monoChunk as unknown as BufferSource,
           });
 
-          pending++;
           audioEncoder.encode(audioData);
           audioData.close();
+
+          processedSamples += frameCount;
+          if (onProgress && totalSamples > 0) {
+            onProgress(Math.min(0.99, processedSamples / totalSamples));
+          }
         }
       }
     } catch (e) {
       encodeError = (e as Error).message;
     }
 
+    if (encodeError) {
+      finish({ ok: false, error: encodeError });
+      return;
+    }
+
+    const flushTimeout = setTimeout(() => {
+      finish({ ok: false, error: 'Audio encoder timed out' });
+    }, 30000);
+
     audioEncoder.flush().then(() => {
-      flushed = true;
-      checkDone();
+      clearTimeout(flushTimeout);
+      onProgress?.(1);
+      if (encodeError) {
+        finish({ ok: false, error: encodeError });
+      } else {
+        finish({ ok: true });
+      }
+    }).catch((e) => {
+      clearTimeout(flushTimeout);
+      finish({ ok: false, error: `Audio flush failed: ${e.message}` });
     });
   });
+}
+
+async function exportMp4(
+  videoFile: File,
+  cutRegions: CutRegion[],
+  callbacks: ExportCallbacks,
+): Promise<void> {
+  callbacks.onProgress({
+    status: 'decoding',
+    progress: 0,
+    message: 'Loading FFmpeg...',
+    totalFrames: 0,
+    processedFrames: 0,
+  });
+
+  try {
+    const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+    const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
+
+    const ffmpeg = new FFmpeg();
+    const coreURL = await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript');
+    const wasmURL = await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm');
+
+    await ffmpeg.load({ coreURL, wasmURL });
+
+    callbacks.onProgress({
+      status: 'decoding',
+      progress: 0.1,
+      message: 'Loading video...',
+      totalFrames: 0,
+      processedFrames: 0,
+    });
+
+    const inputName = 'input.' + (videoFile.name.split('.').pop() || 'mp4');
+    const outputName = 'output.mp4';
+
+    await ffmpeg.writeFile(inputName, await fetchFile(videoFile));
+
+    if (cutRegions.length === 0) {
+      callbacks.onProgress({
+        status: 'encoding',
+        progress: 0.3,
+        message: 'Encoding MP4 (no cuts)...',
+        totalFrames: 0,
+        processedFrames: 0,
+      });
+
+      await ffmpeg.exec(['-i', inputName, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', outputName]);
+    } else {
+      const snapped = snapRegions(cutRegions);
+      const keepSegments = invertToKeepSegments(snapped, 999999);
+
+      const parts: string[] = [];
+      let partIdx = 0;
+
+      callbacks.onProgress({
+        status: 'encoding',
+        progress: 0.2,
+        message: `Extracting ${keepSegments.length} segments...`,
+        totalFrames: 0,
+        processedFrames: 0,
+      });
+
+      for (const seg of keepSegments) {
+        const partName = `part${partIdx}.mp4`;
+        const dur = seg.end - seg.start;
+        await ffmpeg.exec([
+          '-i', inputName,
+          '-ss', seg.start.toFixed(3),
+          '-t', dur.toFixed(3),
+          '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+          '-c:a', 'aac', '-b:a', '128k',
+          partName,
+        ]);
+        parts.push(`file '${partName}'`);
+        partIdx++;
+
+        callbacks.onProgress({
+          status: 'encoding',
+          progress: 0.2 + (0.5 * partIdx / keepSegments.length),
+          message: `Extracted segment ${partIdx}/${keepSegments.length}...`,
+          totalFrames: 0,
+          processedFrames: 0,
+        });
+      }
+
+      const concatList = parts.join('\n');
+      await ffmpeg.writeFile('concat.txt', new TextEncoder().encode(concatList));
+
+      callbacks.onProgress({
+        status: 'muxing',
+        progress: 0.8,
+        message: 'Concatenating segments...',
+        totalFrames: 0,
+        processedFrames: 0,
+      });
+
+      await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', outputName]);
+    }
+
+    callbacks.onProgress({
+      status: 'muxing',
+      progress: 0.95,
+      message: 'Finalizing MP4...',
+      totalFrames: 0,
+      processedFrames: 0,
+    });
+
+    const data = await ffmpeg.readFile(outputName);
+    const blob = new Blob([data as unknown as BlobPart], { type: 'video/mp4' });
+
+    callbacks.onProgress({
+      status: 'done',
+      progress: 1,
+      message: 'Export complete',
+      totalFrames: 0,
+      processedFrames: 0,
+    });
+
+    callbacks.onComplete(blob);
+  } catch (e) {
+    callbacks.onError(`MP4 export failed: ${(e as Error).message}`);
+  }
 }

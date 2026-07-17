@@ -46,18 +46,20 @@ flowchart LR
 
 | Path | Responsibility |
 |---|---|
-| `src/main.ts` | Application shell, layout, keyboard shortcuts, project lifecycle. |
+| `src/main.ts` | Application shell, layout, keyboard shortcuts, project lifecycle, tab management. |
+| `src/store.ts` | Centralized event-based state store for app-wide state. |
+| `src/toast.ts` | Toast notification system for user feedback. |
 | `src/player.ts` | HTML5 video wrapper, drag-and-drop input, play/pause/seek. |
 | `src/waveform.ts` | Canvas-based waveform renderer, playback head, cut-region shading. |
 | `src/audio-extractor.ts` | Web Audio API extraction: decode, downmix, resample to 16 kHz. |
-| `src/transcription-worker.ts` | Web Worker entry point for speech recognition. v0.1 uses a synthetic engine; the real whisper.cpp/WASM integration is planned for the next release. |
+| `src/transcription-worker.ts` | Web Worker entry point for speech recognition (Whisper via @xenova/transformers). |
 | `src/transcription-service.ts` | Worker lifecycle, model loading, and progress orchestration. |
-| `src/transcribe-button.ts` | Transcription trigger UI and progress bar. |
-| `src/transcript-panel.ts` | Editable, playback-synced transcript display. |
+| `src/transcribe-button.ts` | Transcription trigger UI with progress bar, ETA, and cancel button. |
+| `src/transcript-panel.ts` | Editable, playback-synced transcript with word selection, delete-to-cut, search, and cut visualization. |
 | `src/cut-manager.ts` | Cut list model with undo/redo and filler/silence detection. |
-| `src/cuts-panel.ts` | Sidebar UI for cut management. |
-| `src/exporter.ts` | WebCodecs decode → cut routing → VP9/Opus re-encode → WebM muxer. |
-| `src/export-panel.ts` | Export UI with progress, error handling, and capability detection. |
+| `src/cuts-panel.ts` | Sidebar UI for cut management with scan, select-all, and summary. |
+| `src/exporter.ts` | WebCodecs WebM export (VP9/Opus) and FFmpeg.wasm MP4 export (H264/AAC). |
+| `src/export-panel.ts` | Export UI with format selector, progress, error handling, and capability detection. |
 | `src/opfs.ts` | OPFS wrappers for video blob and project JSON persistence. |
 | `src/types.ts` | Shared TypeScript interfaces. |
 

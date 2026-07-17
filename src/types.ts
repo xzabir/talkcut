@@ -36,3 +36,27 @@ export interface ExportProgress {
   totalFrames: number;
   processedFrames: number;
 }
+
+export type ExportFormat = 'webm' | 'mp4';
+
+export type TabId = 'transcript' | 'cuts' | 'export' | 'models';
+
+export interface UIState {
+  activeTab: TabId;
+  selectionStart: number;
+  selectionEnd: number;
+  isEditing: boolean;
+  searchQuery: string;
+}
+
+export interface AppState {
+  project: ProjectState | null;
+  transcript: TranscriptWord[];
+  cutRegions: CutRegion[];
+  ui: UIState;
+  isTranscribing: boolean;
+  isExporting: boolean;
+  activeModelId: string;
+  videoLoaded: boolean;
+  videoDuration: number;
+}

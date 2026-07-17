@@ -1,238 +1,6 @@
 import type { CutRegion, TranscriptWord } from './types.ts';
 import type { CutManager } from './cut-manager.ts';
-
-const STYLES = `
-.cp-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 12px;
-  overflow-y: auto;
-}
-
-.cp-notice {
-  background: rgba(234, 179, 8, 0.15);
-  border: 1px solid rgba(234, 179, 8, 0.4);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #facc15;
-  flex-shrink: 0;
-}
-
-.cp-notice strong {
-  color: #fbbf24;
-}
-
-.cp-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.cp-section h4 {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.cp-threshold-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cp-threshold-row label {
-  font-size: 12px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.cp-threshold-row span {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.cp-threshold-row input[type="range"] {
-  flex: 1;
-  accent-color: var(--accent);
-  height: 4px;
-}
-
-.cp-results {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: 160px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 4px;
-}
-
-.cp-result-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 4px;
-  border-radius: 3px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.cp-result-item:hover {
-  background: var(--bg-surface);
-}
-
-.cp-result-item input[type="checkbox"] {
-  accent-color: var(--accent);
-  margin: 0;
-  flex-shrink: 0;
-}
-
-.cp-result-time {
-  color: var(--text-secondary);
-  font-family: monospace;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.cp-result-label {
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cp-result-dur {
-  color: var(--accent);
-  font-size: 11px;
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-.cp-results-empty {
-  font-size: 12px;
-  color: var(--text-secondary);
-  text-align: center;
-  padding: 8px;
-}
-
-.cp-add-btn {
-  align-self: flex-end;
-  margin-top: 2px;
-}
-
-.cp-regions-list {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.cp-region-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  background: var(--bg-surface);
-  border-radius: var(--radius);
-  font-size: 12px;
-}
-
-.cp-badge {
-  display: inline-block;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
-
-.cp-badge-delete { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
-.cp-badge-silence { background: rgba(234, 179, 8, 0.2); color: #facc15; }
-.cp-badge-filler { background: rgba(79, 140, 255, 0.2); color: var(--accent); }
-
-.cp-region-times {
-  color: var(--text-secondary);
-  font-family: monospace;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.cp-region-label {
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.cp-remove-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 2px;
-  flex-shrink: 0;
-}
-
-.cp-remove-btn:hover {
-  color: var(--danger);
-}
-
-.cp-empty {
-  font-size: 12px;
-  color: var(--text-secondary);
-  text-align: center;
-  padding: 8px;
-}
-
-.cp-toolbar {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.cp-toolbar .btn {
-  font-size: 11px;
-  padding: 4px 10px;
-}
-
-.cp-clear-btn {
-  background: rgba(239, 68, 68, 0.2);
-  color: var(--danger);
-  border: none;
-  border-radius: var(--radius);
-  cursor: pointer;
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.cp-clear-btn:hover {
-  background: rgba(239, 68, 68, 0.35);
-}
-
-.cp-region-count {
-  font-weight: 400;
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-`;
+import { toast } from './toast.ts';
 
 export class CutsPanel {
   private container: HTMLElement;
@@ -241,8 +9,6 @@ export class CutsPanel {
   private getTranscript: () => TranscriptWord[];
 
   private el!: HTMLElement;
-  private styleEl: HTMLStyleElement;
-
   private fillerResultsEl!: HTMLElement;
   private silenceResultsEl!: HTMLElement;
   private silenceThresholdInput!: HTMLInputElement;
@@ -251,6 +17,10 @@ export class CutsPanel {
   private regionCountEl!: HTMLElement;
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
+  private noticeEl!: HTMLElement;
+  private summaryEl!: HTMLElement;
+  private summaryCutsEl!: HTMLElement;
+  private summaryRemovedEl!: HTMLElement;
 
   private fillerMatches: Array<{ words: TranscriptWord[]; filler: string; start: number; end: number }> = [];
   private silenceMatches: Array<{ start: number; end: number; duration: number }> = [];
@@ -268,10 +38,6 @@ export class CutsPanel {
     this.getVideoEl = getVideoEl;
     this.getTranscript = getTranscript;
 
-    this.styleEl = document.createElement('style');
-    this.styleEl.textContent = STYLES;
-    document.head.appendChild(this.styleEl);
-
     this.buildDOM();
     this.attachEvents();
   }
@@ -283,17 +49,18 @@ export class CutsPanel {
     this.boundOnChange = (regions: CutRegion[]) => {
       this.renderRegions(regions);
       this.updateUndoRedo();
+      this.updateSummary(regions);
+      this.updateNotice(regions);
     };
 
     this.cutManager.onChange(this.boundOnChange);
     this.renderRegions(this.cutManager.getRegions());
     this.updateUndoRedo();
+    this.updateSummary(this.cutManager.getRegions());
+    this.updateNotice(this.cutManager.getRegions());
   }
 
   destroy(): void {
-    if (this.styleEl && this.styleEl.parentNode) {
-      this.styleEl.parentNode.removeChild(this.styleEl);
-    }
     this.container.innerHTML = '';
     this.boundOnChange = null;
   }
@@ -302,16 +69,31 @@ export class CutsPanel {
     this.el = document.createElement('div');
     this.el.className = 'cp-panel';
     this.el.innerHTML = `
-      <div class="cp-notice">
+      <div class="cp-notice" style="display:none;">
         <strong>Accuracy notice</strong><br>
-        Cuts are accurate to ~2–5 seconds (keyframe granularity). Frame-accurate cuts coming in a future update.
+        Cuts are accurate to ~2-5 seconds (keyframe granularity). Frame-accurate cuts coming in a future update.
+      </div>
+
+      <div class="cp-summary" style="display:none;">
+        <div class="cp-summary-item">
+          <span class="cp-summary-label">Cuts</span>
+          <span class="cp-summary-value" data-el="summary-cuts">0</span>
+        </div>
+        <div class="cp-summary-item">
+          <span class="cp-summary-label">Removed</span>
+          <span class="cp-summary-value" data-el="summary-removed">0s</span>
+        </div>
       </div>
 
       <div class="cp-section">
         <h4>Filler Words</h4>
-        <button class="btn btn-secondary cp-scan-filler-btn">Scan for filler words</button>
+        <button class="btn btn-sm btn-secondary cp-scan-filler-btn">Scan for filler words</button>
         <div class="cp-results cp-filler-results"></div>
-        <button class="btn btn-primary cp-add-filler-btn cp-add-btn" style="display:none;">Add selected</button>
+        <div class="cp-results-toolbar" style="display:none;">
+          <button class="cp-select-all-btn" data-action="select-all-filler">Select all</button>
+          <button class="cp-select-all-btn" data-action="deselect-all-filler">Deselect all</button>
+          <button class="btn btn-sm btn-primary cp-add-filler-btn" style="margin-left:auto;">Add selected</button>
+        </div>
       </div>
 
       <div class="cp-section">
@@ -320,22 +102,30 @@ export class CutsPanel {
           <label>Min gap: <span class="cp-threshold-value">2.0s</span></label>
           <input type="range" class="cp-silence-threshold" min="0.5" max="5.0" step="0.1" value="2.0">
         </div>
-        <button class="btn btn-secondary cp-scan-silence-btn">Scan for silence</button>
+        <button class="btn btn-sm btn-secondary cp-scan-silence-btn">Scan for silence</button>
         <div class="cp-results cp-silence-results"></div>
-        <button class="btn btn-primary cp-add-silence-btn cp-add-btn" style="display:none;">Add selected</button>
+        <div class="cp-results-toolbar" style="display:none;">
+          <button class="cp-select-all-btn" data-action="select-all-silence">Select all</button>
+          <button class="cp-select-all-btn" data-action="deselect-all-silence">Deselect all</button>
+          <button class="btn btn-sm btn-primary cp-add-silence-btn" style="margin-left:auto;">Add selected</button>
+        </div>
       </div>
 
       <div class="cp-section">
         <h4>Cut Regions <span class="cp-region-count">(0)</span></h4>
         <div class="cp-regions-list"></div>
         <div class="cp-toolbar">
-          <button class="btn btn-secondary cp-undo-btn" disabled>↩ Undo</button>
-          <button class="btn btn-secondary cp-redo-btn" disabled>↪ Redo</button>
-          <button class="cp-clear-btn">Clear all</button>
+          <button class="btn btn-sm btn-secondary cp-undo-btn" disabled>Undo</button>
+          <button class="btn btn-sm btn-secondary cp-redo-btn" disabled>Redo</button>
+          <button class="btn btn-sm btn-danger cp-clear-btn">Clear all</button>
         </div>
       </div>
     `;
 
+    this.noticeEl = this.el.querySelector('.cp-notice')!;
+    this.summaryEl = this.el.querySelector('.cp-summary')!;
+    this.summaryCutsEl = this.el.querySelector('[data-el="summary-cuts"]')!;
+    this.summaryRemovedEl = this.el.querySelector('[data-el="summary-removed"]')!;
     this.fillerResultsEl = this.el.querySelector('.cp-filler-results')!;
     this.silenceResultsEl = this.el.querySelector('.cp-silence-results')!;
     this.silenceThresholdInput = this.el.querySelector('.cp-silence-threshold')!;
@@ -379,10 +169,26 @@ export class CutsPanel {
     this.el.querySelector('.cp-clear-btn')?.addEventListener('click', () => {
       if (this.cutManager.getRegions().length === 0) return;
       this.cutManager.clear();
+      toast.info('All cut regions cleared');
     });
 
-    this.regionsListEl.addEventListener('click', (e) => {
+    this.el.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+      const actionEl = target.closest<HTMLElement>('[data-action]');
+      if (actionEl) {
+        const action = actionEl.getAttribute('data-action');
+        if (action === 'select-all-filler') {
+          this.fillerResultsEl.querySelectorAll<HTMLInputElement>('.cp-filler-check').forEach((cb) => { cb.checked = true; });
+        } else if (action === 'deselect-all-filler') {
+          this.fillerResultsEl.querySelectorAll<HTMLInputElement>('.cp-filler-check').forEach((cb) => { cb.checked = false; });
+        } else if (action === 'select-all-silence') {
+          this.silenceResultsEl.querySelectorAll<HTMLInputElement>('.cp-silence-check').forEach((cb) => { cb.checked = true; });
+        } else if (action === 'deselect-all-silence') {
+          this.silenceResultsEl.querySelectorAll<HTMLInputElement>('.cp-silence-check').forEach((cb) => { cb.checked = false; });
+        }
+        return;
+      }
+
       const removeBtn = target.closest<HTMLElement>('.cp-remove-btn');
       if (removeBtn) {
         const id = removeBtn.getAttribute('data-id');
@@ -407,7 +213,7 @@ export class CutsPanel {
     const transcript = this.getTranscript();
     if (transcript.length === 0) {
       this.fillerResultsEl.innerHTML = '<div class="cp-results-empty">No transcript available.</div>';
-      this.toggleAddBtn('filler', false);
+      this.toggleResultsToolbar('filler', false);
       return;
     }
 
@@ -415,7 +221,7 @@ export class CutsPanel {
 
     if (this.fillerMatches.length === 0) {
       this.fillerResultsEl.innerHTML = '<div class="cp-results-empty">No filler words found.</div>';
-      this.toggleAddBtn('filler', false);
+      this.toggleResultsToolbar('filler', false);
       return;
     }
 
@@ -423,7 +229,7 @@ export class CutsPanel {
       .map(
         (m, i) => `
         <label class="cp-result-item">
-          <input type="checkbox" class="cp-filler-check" data-index="${i}">
+          <input type="checkbox" class="cp-filler-check" data-index="${i}" checked>
           <span class="cp-result-time">${formatTime(m.start)}</span>
           <span class="cp-result-label">"${escHtml(m.words.map((w) => w.word).join(' '))}"</span>
           <span class="cp-result-dur">${m.filler}</span>
@@ -432,7 +238,8 @@ export class CutsPanel {
       )
       .join('');
 
-    this.toggleAddBtn('filler', true);
+    this.toggleResultsToolbar('filler', true);
+    toast.info(`Found ${this.fillerMatches.length} filler word${this.fillerMatches.length !== 1 ? 's' : ''}`);
   }
 
   private addSelectedFillers(): void {
@@ -450,6 +257,7 @@ export class CutsPanel {
     });
 
     if (added > 0) {
+      toast.success(`Added ${added} filler cut${added !== 1 ? 's' : ''}`);
       this.scanFillers();
     }
   }
@@ -458,7 +266,7 @@ export class CutsPanel {
     const transcript = this.getTranscript();
     if (transcript.length === 0) {
       this.silenceResultsEl.innerHTML = '<div class="cp-results-empty">No transcript available.</div>';
-      this.toggleAddBtn('silence', false);
+      this.toggleResultsToolbar('silence', false);
       return;
     }
 
@@ -466,8 +274,8 @@ export class CutsPanel {
     this.silenceMatches = this.cutManager.findSilence(transcript, threshold);
 
     if (this.silenceMatches.length === 0) {
-      this.silenceResultsEl.innerHTML = `<div class="cp-results-empty">No pauses ≥ ${threshold.toFixed(1)}s found.</div>`;
-      this.toggleAddBtn('silence', false);
+      this.silenceResultsEl.innerHTML = `<div class="cp-results-empty">No pauses >= ${threshold.toFixed(1)}s found.</div>`;
+      this.toggleResultsToolbar('silence', false);
       return;
     }
 
@@ -475,15 +283,16 @@ export class CutsPanel {
       .map(
         (s, i) => `
         <label class="cp-result-item">
-          <input type="checkbox" class="cp-silence-check" data-index="${i}">
-          <span class="cp-result-time">${formatTime(s.start)} – ${formatTime(s.end)}</span>
+          <input type="checkbox" class="cp-silence-check" data-index="${i}" checked>
+          <span class="cp-result-time">${formatTime(s.start)} - ${formatTime(s.end)}</span>
           <span class="cp-result-dur">${s.duration.toFixed(1)}s</span>
         </label>
       `,
       )
       .join('');
 
-    this.toggleAddBtn('silence', true);
+    this.toggleResultsToolbar('silence', true);
+    toast.info(`Found ${this.silenceMatches.length} silence${this.silenceMatches.length !== 1 ? 's' : ''} (>= ${threshold.toFixed(1)}s)`);
   }
 
   private addSelectedSilences(): void {
@@ -501,6 +310,7 @@ export class CutsPanel {
     });
 
     if (added > 0) {
+      toast.success(`Added ${added} silence cut${added !== 1 ? 's' : ''}`);
       this.scanSilence();
     }
   }
@@ -509,7 +319,7 @@ export class CutsPanel {
     this.regionCountEl.textContent = `(${regions.length})`;
 
     if (regions.length === 0) {
-      this.regionsListEl.innerHTML = '<div class="cp-empty">No cut regions yet.</div>';
+      this.regionsListEl.innerHTML = '<div class="cp-empty">No cut regions yet. Select words in the transcript and press Delete.</div>';
       return;
     }
 
@@ -518,9 +328,9 @@ export class CutsPanel {
         (r) => `
         <div class="cp-region-item" data-start="${r.start}" data-end="${r.end}">
           <span class="cp-badge cp-badge-${r.type}">${r.type}</span>
-          <span class="cp-region-times">${formatTime(r.start)} – ${formatTime(r.end)}</span>
+          <span class="cp-region-times">${formatTime(r.start)} - ${formatTime(r.end)}</span>
           <span class="cp-region-label">${r.label ? escHtml(r.label) : ''}</span>
-          <button class="cp-remove-btn" data-id="${r.id}" title="Remove">✕</button>
+          <button class="cp-remove-btn" data-id="${r.id}" title="Remove">&times;</button>
         </div>
       `,
       )
@@ -532,11 +342,26 @@ export class CutsPanel {
     this.redoBtn.disabled = !this.cutManager.canRedo();
   }
 
-  private toggleAddBtn(kind: 'filler' | 'silence', show: boolean): void {
+  private updateSummary(regions: CutRegion[]): void {
+    if (regions.length === 0) {
+      this.summaryEl.style.display = 'none';
+      return;
+    }
+    this.summaryEl.style.display = 'flex';
+    const totalRemoved = regions.reduce((sum, r) => sum + (r.end - r.start), 0);
+    this.summaryCutsEl.textContent = String(regions.length);
+    this.summaryRemovedEl.textContent = formatDuration(totalRemoved);
+  }
+
+  private updateNotice(regions: CutRegion[]): void {
+    this.noticeEl.style.display = regions.length > 0 ? 'block' : 'none';
+  }
+
+  private toggleResultsToolbar(kind: 'filler' | 'silence', show: boolean): void {
     const sel = kind === 'filler' ? '.cp-add-filler-btn' : '.cp-add-silence-btn';
     const btn = this.el.querySelector<HTMLElement>(sel);
     if (btn) {
-      btn.style.display = show ? '' : 'none';
+      btn.parentElement!.style.display = show ? 'flex' : 'none';
     }
   }
 }
@@ -546,6 +371,13 @@ function formatTime(seconds: number): string {
   const secs = (seconds % 60).toFixed(1);
   const secStr = secs.padStart(4, '0');
   return `${mins}:${secStr}`;
+}
+
+function formatDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds.toFixed(1)}s`;
+  const m = Math.floor(totalSeconds / 60);
+  const s = Math.floor(totalSeconds % 60);
+  return `${m}m ${s}s`;
 }
 
 function escHtml(text: string): string {

@@ -1,4 +1,5 @@
 .internal/
+.opencode/
 dist/
 dist-ssr/
 node_modules/
