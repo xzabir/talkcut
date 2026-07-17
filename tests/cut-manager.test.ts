@@ -21,7 +21,7 @@ describe('CutManager', () => {
     expect(manager.getRegions()[0].type).toBe('silence');
   });
 
-  it('detects filler words', () => {
+  it('detects single-word filler words', () => {
     const manager = new CutManager();
     const transcript = [
       word('um', 0.0, 0.3),
@@ -32,8 +32,46 @@ describe('CutManager', () => {
 
     const found = manager.findFillerWords(transcript);
     expect(found).toHaveLength(2);
-    expect(found[0].word.word).toBe('um');
-    expect(found[1].word.word).toBe('like');
+    expect(found[0].filler).toBe('um');
+    expect(found[0].start).toBe(0.0);
+    expect(found[1].filler).toBe('like');
+    expect(found[1].start).toBe(1.0);
+  });
+
+  it('detects multi-word filler patterns (n-gram)', () => {
+    const manager = new CutManager();
+    const transcript = [
+      word('hello', 0.0, 0.5),
+      word('you', 0.6, 0.8),
+      word('know', 0.8, 1.0),
+      word('world', 1.1, 1.5),
+      word('I', 2.0, 2.2),
+      word('mean', 2.2, 2.4),
+      word('sort', 3.0, 3.2),
+      word('of', 3.2, 3.4),
+    ];
+
+    const found = manager.findFillerWords(transcript);
+    expect(found).toHaveLength(3);
+    expect(found[0].filler).toBe('you know');
+    expect(found[0].words).toHaveLength(2);
+    expect(found[1].filler).toBe('i mean');
+    expect(found[2].filler).toBe('sort of');
+  });
+
+  it('prunes already-cut fillers from scan results', () => {
+    const manager = new CutManager();
+    const transcript = [
+      word('um', 0.0, 0.3),
+      word('hello', 0.4, 0.8),
+      word('like', 1.0, 1.2),
+    ];
+
+    manager.addRegion(0.0, 0.3, 'filler', 'um');
+
+    const found = manager.findFillerWords(transcript);
+    expect(found).toHaveLength(1);
+    expect(found[0].filler).toBe('like');
   });
 
   it('detects silence between words', () => {

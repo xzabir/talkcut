@@ -3,7 +3,7 @@ import type { TranscriptWord } from './types.ts';
 // ── Main → Worker ──────────────────────────────────────────
 export interface LoadModelRequest {
   type: 'load-model';
-  modelData?: ArrayBuffer;
+  modelId: string;
 }
 
 export interface TranscribeRequest {
@@ -26,6 +26,12 @@ export interface ModelLoadedMessage {
   type: 'model-loaded';
 }
 
+export interface ModelLoadProgressMessage {
+  type: 'model-progress';
+  progress: number;
+  message: string;
+}
+
 export interface WhisperProgressMessage {
   type: 'progress';
   status: 'loading-model' | 'extracting-audio' | 'transcribing' | 'done' | 'error';
@@ -45,6 +51,7 @@ export interface WhisperErrorMessage {
 
 export type WhisperWorkerOutMessage =
   | ModelLoadedMessage
+  | ModelLoadProgressMessage
   | WhisperProgressMessage
   | WhisperResultMessage
   | WhisperErrorMessage;

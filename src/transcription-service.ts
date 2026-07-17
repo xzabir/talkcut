@@ -7,13 +7,12 @@ export interface TranscriptionCallbacks {
   onError: (error: string) => void;
 }
 
-const MODEL_DIR = 'models';
-const WHISPER_MODEL = 'whisper-base.bin';
-const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin';
+const DEFAULT_MODEL = 'Xenova/whisper-tiny.en';
 
 export class TranscriptionService {
   private worker: Worker | null = null;
   private modelLoaded = false;
+  private currentModelId: string = DEFAULT_MODEL;
   private modelLoadResolve: ((value: void) => void) | null = null;
   private modelLoadReject: ((reason: Error) => void) | null = null;
   private currentCallbacks: TranscriptionCallbacks | null = null;
@@ -41,6 +40,10 @@ export class TranscriptionService {
           break;
 
         case 'progress':
+          if (this.modelLoadResolve && msg.status === 'loading-model') {
+            // Model download progress — forward to the ensureModel callback
+            // via a side channel. The caller's onProgress is not yet set.
+          }
           if (this.currentCallbacks) {
             this.currentCallbacks.onProgress(msg.status, msg.progress, msg.message);
           }
@@ -55,13 +58,12 @@ export class TranscriptionService {
 
         case 'error':
           {
-            const errMsg = msg.message;
             if (this.modelLoadReject) {
-              this.modelLoadReject(new Error(errMsg));
+              this.modelLoadReject(new Error(msg.message));
               this.modelLoadResolve = null;
               this.modelLoadReject = null;
             } else if (this.currentCallbacks) {
-              this.currentCallbacks.onError(errMsg);
+              this.currentCallbacks.onError(msg.message);
               this.currentCallbacks = null;
             }
           }
@@ -82,6 +84,12 @@ export class TranscriptionService {
     };
   }
 
+  setModelId(modelId: string): void {
+    if (this.currentModelId === modelId && this.modelLoaded) return;
+    this.currentModelId = modelId;
+    this.modelLoaded = false;
+  }
+
   async ensureModel(
     onProgress?: (progress: number, message: string) => void
   ): Promise<void> {
@@ -91,74 +99,26 @@ export class TranscriptionService {
       this.modelLoadResolve = resolve;
       this.modelLoadReject = reject;
 
-      (async () => {
-        try {
-          const root = await navigator.storage.getDirectory();
-          let modelDir: FileSystemDirectoryHandle;
-          try {
-            modelDir = await root.getDirectoryHandle(MODEL_DIR);
-          } catch {
-            modelDir = await root.getDirectoryHandle(MODEL_DIR, { create: true });
-          }
-
-          let modelData: ArrayBuffer;
-
-          try {
-            const fh = await modelDir.getFileHandle(WHISPER_MODEL);
-            const file = await fh.getFile();
-            modelData = await file.arrayBuffer();
-            onProgress?.(1, 'Model loaded from cache');
-          } catch {
-            onProgress?.(0, 'Downloading whisper model...');
-            const resp = await fetch(MODEL_URL);
-            if (!resp.ok) throw new Error(`Model download failed: ${resp.status}`);
-
-            const body = resp.body;
-            if (!body) {
-              modelData = await resp.arrayBuffer();
-              onProgress?.(0.95, 'Caching model...');
-            } else {
-              const contentLength = resp.headers.get('content-length');
-              const total = contentLength ? parseInt(contentLength, 10) : 0;
-              const reader = body.getReader();
-              const chunks: Uint8Array[] = [];
-              let received = 0;
-
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value);
-                received += value.length;
-                if (total) {
-                  const pct = Math.round((received / total) * 100);
-                  onProgress?.(received / total, `Downloading model... ${pct}%`);
-                }
-              }
-
-              const merged = new Uint8Array(received);
-              let offset = 0;
-              for (const chunk of chunks) {
-                merged.set(chunk, offset);
-                offset += chunk.length;
-              }
-              modelData = merged.buffer.slice(0);
-              onProgress?.(0.95, 'Caching model...');
-            }
-
-            const fh = await modelDir.getFileHandle(WHISPER_MODEL, { create: true });
-            const writable = await fh.createWritable();
-            await writable.write(new Uint8Array(modelData));
-            await writable.close();
-          }
-
-          this.worker?.postMessage(
-            { type: 'load-model', modelData },
-            [modelData]
-          );
-        } catch (err) {
-          reject(err instanceof Error ? err : new Error(String(err)));
+      // Intercept progress messages during model loading
+      const originalOnmessage = this.worker!.onmessage;
+      this.worker!.onmessage = (event: MessageEvent<WhisperWorkerOutMessage>) => {
+        const msg = event.data;
+        if (msg.type === 'progress' && msg.status === 'loading-model') {
+          onProgress?.(msg.progress / 100, msg.message);
+        } else if (msg.type === 'model-loaded') {
+          this.modelLoaded = true;
+          this.worker!.onmessage = originalOnmessage;
+          resolve();
+        } else if (msg.type === 'error') {
+          this.worker!.onmessage = originalOnmessage;
+          reject(new Error(msg.message));
         }
-      })();
+      };
+
+      this.worker?.postMessage({
+        type: 'load-model',
+        modelId: this.currentModelId,
+      });
     });
   }
 

@@ -45,7 +45,7 @@ const STYLES = `
   padding: 2px 4px;
   margin: 1px;
   border-radius: 3px;
-  cursor: text;
+  cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   outline: none;
   border: 1px solid transparent;
@@ -106,6 +106,7 @@ export class TranscriptPanel {
   private headerEl: HTMLElement | null = null;
 
   private words: TranscriptWord[] = [];
+  private cachedSpans: HTMLElement[] = [];
   private getVideoEl: (() => HTMLVideoElement) | null = null;
   private getProject: (() => ProjectState | null) | null = null;
   private onSave: (() => void) | null = null;
@@ -160,9 +161,8 @@ export class TranscriptPanel {
   }
 
   highlightWord(time: number): void {
-    if (this.words.length === 0) return;
+    if (this.words.length === 0 || this.cachedSpans.length === 0) return;
 
-    const spans = this.flowEl.querySelectorAll<HTMLElement>('.tp-word');
     let foundIndex = -1;
 
     for (let i = 0; i < this.words.length; i++) {
@@ -189,12 +189,12 @@ export class TranscriptPanel {
     }
 
     if (foundIndex !== this.activeWordIndex) {
-      if (this.activeWordIndex >= 0 && this.activeWordIndex < spans.length) {
-        spans[this.activeWordIndex].classList.remove('active');
+      if (this.activeWordIndex >= 0 && this.activeWordIndex < this.cachedSpans.length) {
+        this.cachedSpans[this.activeWordIndex].classList.remove('active');
       }
       this.activeWordIndex = foundIndex;
-      if (foundIndex >= 0 && foundIndex < spans.length) {
-        const activeSpan = spans[foundIndex];
+      if (foundIndex >= 0 && foundIndex < this.cachedSpans.length) {
+        const activeSpan = this.cachedSpans[foundIndex];
         activeSpan.classList.add('active');
         if (document.activeElement !== activeSpan) {
           activeSpan.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -226,12 +226,9 @@ export class TranscriptPanel {
     this.getProject = null;
     this.onSave = null;
     this.words = [];
+    this.cachedSpans = [];
     this.activeWordIndex = -1;
   }
-
-  // ---------------------------------------------------------------------------
-  // Private: DOM construction
-  // ---------------------------------------------------------------------------
 
   private buildDOM(): void {
     this.el = document.createElement('div');
@@ -244,7 +241,7 @@ export class TranscriptPanel {
       <div class="tp-flow"></div>
       <div class="tp-empty">
         <p>Load a video and transcribe to get started.</p>
-        <p class="tp-empty-hint">Click any word to seek. Arrow keys to navigate. Type to edit.</p>
+        <p class="tp-empty-hint">Click to seek. Double-click to edit. Arrow keys to navigate.</p>
       </div>
     `;
 
@@ -256,18 +253,16 @@ export class TranscriptPanel {
 
   private attachEvents(): void {
     this.flowEl.addEventListener('click', this.handleClick);
+    this.flowEl.addEventListener('dblclick', this.handleDblClick);
     this.flowEl.addEventListener('focusout', this.handleFocusOut);
     this.flowEl.addEventListener('keydown', this.handleKeyDown);
     this.flowEl.addEventListener('input', this.handleInput);
   }
 
-  // ---------------------------------------------------------------------------
-  // Private: rendering
-  // ---------------------------------------------------------------------------
-
   private renderWords(): void {
     this.flowEl.innerHTML = '';
     this.activeWordIndex = -1;
+    this.cachedSpans = [];
 
     if (this.words.length === 0) {
       this.showEmpty(true);
@@ -285,6 +280,7 @@ export class TranscriptPanel {
       const span = document.createElement('span');
       span.className = 'tp-word';
       span.contentEditable = 'true';
+      span.spellcheck = false;
       if (w.confidence < 0.85) {
         span.classList.add('low-confidence');
       }
@@ -295,6 +291,7 @@ export class TranscriptPanel {
       span.textContent = w.word;
 
       fragment.appendChild(span);
+      this.cachedSpans.push(span);
 
       if (i < this.words.length - 1) {
         fragment.appendChild(document.createTextNode(' '));
@@ -318,10 +315,6 @@ export class TranscriptPanel {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Private: events
-  // ---------------------------------------------------------------------------
-
   private handleClick = (e: MouseEvent): void => {
     const target = (e.target as HTMLElement).closest<HTMLElement>('.tp-word');
     if (!target) return;
@@ -332,7 +325,21 @@ export class TranscriptPanel {
     const video = this.getVideoEl?.();
     if (video) {
       video.currentTime = this.words[index].start;
-      video.play().catch(() => {});
+    }
+  };
+
+  private handleDblClick = (e: MouseEvent): void => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('.tp-word');
+    if (!target) return;
+
+    target.focus();
+
+    const range = document.createRange();
+    range.selectNodeContents(target);
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
     }
   };
 
@@ -345,10 +352,6 @@ export class TranscriptPanel {
   private handleInput = (_e: Event): void => {
     this.scheduleSync();
   };
-
-  // ---------------------------------------------------------------------------
-  // Private: keyboard navigation
-  // ---------------------------------------------------------------------------
 
   private handleKeyDown = (e: KeyboardEvent): void => {
     const target = e.target as HTMLElement;
@@ -407,9 +410,8 @@ export class TranscriptPanel {
       video.currentTime = this.words[newIndex].start;
     }
 
-    const spans = this.flowEl.querySelectorAll<HTMLElement>('.tp-word');
-    if (newIndex < spans.length) {
-      const nextSpan = spans[newIndex];
+    if (newIndex < this.cachedSpans.length) {
+      const nextSpan = this.cachedSpans[newIndex];
       nextSpan.focus();
 
       const textNode = nextSpan.firstChild;
@@ -427,10 +429,6 @@ export class TranscriptPanel {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Private: DOM → words sync
-  // ---------------------------------------------------------------------------
-
   private scheduleSync(): void {
     if (this.syncTimer !== null) {
       clearTimeout(this.syncTimer);
@@ -442,8 +440,9 @@ export class TranscriptPanel {
   }
 
   private syncFromDOM(): void {
-    const spans = this.flowEl.querySelectorAll<HTMLElement>('.tp-word');
+    const spans = this.cachedSpans;
     const newWords: TranscriptWord[] = [];
+    let tokenCountChanged = false;
 
     for (let i = 0; i < spans.length; i++) {
       const span = spans[i];
@@ -455,6 +454,10 @@ export class TranscriptPanel {
       const start = parseFloat(span.getAttribute('data-start') || '0');
       const end = parseFloat(span.getAttribute('data-end') || '0');
       const confidence = parseFloat(span.getAttribute('data-confidence') || '0.9');
+
+      if (tokens.length !== 1) {
+        tokenCountChanged = true;
+      }
 
       if (tokens.length === 1) {
         newWords.push({ word: tokens[0], start, end, confidence });
@@ -475,13 +478,18 @@ export class TranscriptPanel {
     if (transcriptEqual(this.words, newWords)) return;
 
     this.words = newWords;
-    this.renderWords();
+
+    if (tokenCountChanged) {
+      this.renderWords();
+    } else {
+      for (let i = 0; i < this.words.length && i < spans.length; i++) {
+        spans[i].setAttribute('data-start', String(this.words[i].start));
+        spans[i].setAttribute('data-end', String(this.words[i].end));
+      }
+    }
+
     this.saveTranscript();
   }
-
-  // ---------------------------------------------------------------------------
-  // Private: persistence
-  // ---------------------------------------------------------------------------
 
   private async saveTranscript(): Promise<void> {
     const getProject = this.getProject;
@@ -501,10 +509,6 @@ export class TranscriptPanel {
     }
   }
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function isAtStartOfWord(node: Node, wordEl: HTMLElement, offset: number): boolean {
   if (offset !== 0) return false;
@@ -548,7 +552,6 @@ function transcriptEqual(a: TranscriptWord[], b: TranscriptWord[]): boolean {
     if (a[i].word !== b[i].word) return false;
     if (Math.abs(a[i].start - b[i].start) > 0.001) return false;
     if (Math.abs(a[i].end - b[i].end) > 0.001) return false;
-    if (Math.abs(a[i].confidence - b[i].confidence) > 0.001) return false;
   }
   return true;
 }

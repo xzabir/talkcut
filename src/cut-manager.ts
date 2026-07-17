@@ -2,8 +2,8 @@ import type { CutRegion, TranscriptWord, ProjectState } from './types.ts';
 
 const MAX_UNDO_STEPS = 50;
 
-const FILLER_PATTERNS = [
-  'um', 'uh', 'hmm',
+const FILLER_PATTERNS: string[] = [
+  'um', 'uh', 'hmm', 'er', 'ah',
   'you know',
   'like',
   'i mean',
@@ -12,6 +12,8 @@ const FILLER_PATTERNS = [
   'right',
   'so', 'well', 'okay',
 ];
+
+const MAX_NGRAM = Math.max(...FILLER_PATTERNS.map((p) => p.split(' ').length));
 
 export class CutManager {
   private regions: CutRegion[] = [];
@@ -48,14 +50,35 @@ export class CutManager {
     this.notify();
   }
 
-  findFillerWords(transcript: TranscriptWord[]): Array<{ word: TranscriptWord; filler: string }> {
-    const results: Array<{ word: TranscriptWord; filler: string }> = [];
+  findFillerWords(transcript: TranscriptWord[]): Array<{ words: TranscriptWord[]; filler: string; start: number; end: number }> {
+    const results: Array<{ words: TranscriptWord[]; filler: string; start: number; end: number }> = [];
+    const used = new Set<number>();
 
-    for (const tw of transcript) {
-      const lower = tw.word.toLowerCase().replace(/[.,!?;:]+$/, '');
-      for (const filler of FILLER_PATTERNS) {
-        if (lower === filler) {
-          results.push({ word: tw, filler });
+    for (let i = 0; i < transcript.length; i++) {
+      for (let n = Math.min(MAX_NGRAM, transcript.length - i); n >= 1; n--) {
+        const slice = transcript.slice(i, i + n);
+        const phrase = slice
+          .map((w) => w.word.toLowerCase().replace(/[.,!?;:]+$/, ''))
+          .join(' ');
+
+        if (FILLER_PATTERNS.includes(phrase)) {
+          let alreadyCut = false;
+          for (const r of this.regions) {
+            if (r.start <= slice[0].start && r.end >= slice[slice.length - 1].end) {
+              alreadyCut = true;
+              break;
+            }
+          }
+
+          if (!alreadyCut) {
+            results.push({
+              words: slice,
+              filler: phrase,
+              start: slice[0].start,
+              end: slice[slice.length - 1].end,
+            });
+            for (let k = i; k < i + n; k++) used.add(k);
+          }
           break;
         }
       }
@@ -73,11 +96,20 @@ export class CutManager {
     for (let i = 0; i < transcript.length - 1; i++) {
       const gap = transcript[i + 1].start - transcript[i].end;
       if (gap >= minGapSeconds) {
-        silences.push({
-          start: transcript[i].end,
-          end: transcript[i + 1].start,
-          duration: gap,
-        });
+        let alreadyCut = false;
+        for (const r of this.regions) {
+          if (r.start <= transcript[i].end && r.end >= transcript[i + 1].start) {
+            alreadyCut = true;
+            break;
+          }
+        }
+        if (!alreadyCut) {
+          silences.push({
+            start: transcript[i].end,
+            end: transcript[i + 1].start,
+            duration: gap,
+          });
+        }
       }
     }
 

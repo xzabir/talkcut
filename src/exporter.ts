@@ -1,4 +1,5 @@
 import type { CutRegion, ExportProgress } from './types.ts';
+import { Muxer, ArrayBufferTarget } from 'webm-muxer';
 
 export interface ExportCallbacks {
   onProgress: (progress: ExportProgress) => void;
@@ -12,10 +13,6 @@ interface KeepSegment {
   deletedBefore: number;
 }
 
-// ============================================================================
-// Feature Detection
-// ============================================================================
-
 export function isExportSupported(): boolean {
   try {
     return (
@@ -28,285 +25,6 @@ export function isExportSupported(): boolean {
     return false;
   }
 }
-
-// ============================================================================
-// EBML / WebM Helpers
-// ============================================================================
-
-function writeVINT(value: number): Uint8Array {
-  let n = 1;
-  if (value > 0x7f) n = 2;
-  if (value > 0x3fff) n = 3;
-  if (value > 0x1fffff) n = 4;
-  if (value > 0x0fffffff) n = 5;
-  if (value > 0x07ffffffff) n = 6;
-  if (value > 0x03ffffffffff) n = 7;
-  if (value > 0x01ffffffffffff) n = 8;
-
-  const result = new Uint8Array(n);
-  const marker = 0x80 >> (n - 1);
-  const firstByteMask = (1 << (8 - n)) - 1;
-
-  result[0] = marker | ((value >>> ((n - 1) * 8)) & firstByteMask);
-  for (let i = 1; i < n; i++) {
-    result[i] = (value >>> ((n - 1 - i) * 8)) & 0xff;
-  }
-
-  return result;
-}
-
-function writeUnsignedInt(value: number): Uint8Array {
-  if (value === 0) return new Uint8Array([0x00]);
-  let bytes = 0;
-  let v = value;
-  while (v > 0) {
-    bytes++;
-    v >>>= 8;
-  }
-  const result = new Uint8Array(bytes);
-  for (let i = 0; i < bytes; i++) {
-    result[bytes - 1 - i] = (value >>> (i * 8)) & 0xff;
-  }
-  return result;
-}
-
-function writeFloat64(value: number): Uint8Array {
-  const buf = new ArrayBuffer(8);
-  new DataView(buf).setFloat64(0, value, false);
-  return new Uint8Array(buf);
-}
-
-function writeElement(id: number[], data: Uint8Array): Uint8Array {
-  const size = writeVINT(data.length);
-  const result = new Uint8Array(id.length + size.length + data.length);
-  result.set(id, 0);
-  result.set(size, id.length);
-  result.set(data, id.length + size.length);
-  return result;
-}
-
-function writeStringElement(id: number[], str: string): Uint8Array {
-  const encoder = new TextEncoder();
-  return writeElement(id, encoder.encode(str));
-}
-
-function writeUnsignedIntElement(id: number[], value: number): Uint8Array {
-  return writeElement(id, writeUnsignedInt(value));
-}
-
-function writeFloatElement(id: number[], value: number): Uint8Array {
-  return writeElement(id, writeFloat64(value));
-}
-
-function concatArrays(arrays: Uint8Array[]): Uint8Array {
-  const total = arrays.reduce((s, a) => s + a.length, 0);
-  const result = new Uint8Array(total);
-  let offset = 0;
-  for (const a of arrays) {
-    result.set(a, offset);
-    offset += a.length;
-  }
-  return result;
-}
-
-// ============================================================================
-// WebM Muxer
-// ============================================================================
-
-class WebMMuxer {
-  private videoTrackNum = 1;
-  private audioTrackNum = 2;
-
-  private videoChunks: { data: Uint8Array; timecode: number; keyframe: boolean }[] = [];
-  private audioChunks: { data: Uint8Array; timecode: number }[] = [];
-
-  private width = 640;
-  private height = 480;
-  private sampleRate = 48000;
-  private channels = 1;
-
-  setVideoParams(width: number, height: number): void {
-    this.width = width;
-    this.height = height;
-  }
-
-  setAudioParams(sampleRate: number, channels: number): void {
-    this.sampleRate = sampleRate;
-    this.channels = channels;
-  }
-
-  addVideoChunk(data: Uint8Array, timestampMs: number, isKeyframe: boolean): void {
-    this.videoChunks.push({
-      data,
-      timecode: Math.round(timestampMs),
-      keyframe: isKeyframe,
-    });
-  }
-
-  addAudioChunk(data: Uint8Array, timestampMs: number): void {
-    this.audioChunks.push({
-      data,
-      timecode: Math.round(timestampMs),
-    });
-  }
-
-  finalize(): Uint8Array {
-    const segmentContent = this.buildSegmentContent();
-    const ebmlHeader = this.buildEBMLHeader();
-
-    const segmentId = [0x18, 0x53, 0x80, 0x67];
-    const segmentSize = writeVINT(segmentContent.length);
-
-    return concatArrays([
-      ebmlHeader,
-      new Uint8Array(segmentId),
-      segmentSize,
-      segmentContent,
-    ]);
-  }
-
-  private buildEBMLHeader(): Uint8Array {
-    return concatArrays([
-      new Uint8Array([0x1a, 0x45, 0xdf, 0xa3]),
-      writeVINT(0x2b),
-      concatArrays([
-        writeUnsignedIntElement([0x42, 0x86], 1),
-        writeUnsignedIntElement([0x42, 0xf7], 1),
-        writeUnsignedIntElement([0x42, 0xf2], 4),
-        writeUnsignedIntElement([0x42, 0xf3], 8),
-        writeStringElement([0x42, 0x82], 'webm'),
-        writeUnsignedIntElement([0x42, 0x87], 4),
-        writeUnsignedIntElement([0x42, 0x85], 2),
-      ]),
-    ]);
-  }
-
-  private buildInfo(durationMs: number): Uint8Array {
-    const timecodeScale = writeUnsignedInt(1_000_000);
-    return writeElement(
-      [0x15, 0x49, 0xa9, 0x66],
-      concatArrays([
-        writeElement([0x2a, 0xd7, 0xb1], timecodeScale),
-        writeStringElement([0x4d, 0x80], 'TalkCut'),
-        writeStringElement([0x57, 0x41], 'TalkCut'),
-        writeFloatElement([0x44, 0x89], durationMs),
-      ]),
-    );
-  }
-
-  private buildTracks(): Uint8Array {
-    const videoTrack = this.buildVideoTrackEntry();
-    const audioTrack = this.buildAudioTrackEntry();
-    return writeElement([0x16, 0x54, 0xae, 0x6b], concatArrays([videoTrack, audioTrack]));
-  }
-
-  private buildVideoTrackEntry(): Uint8Array {
-    const trackEntry = concatArrays([
-      writeUnsignedIntElement([0xd7], this.videoTrackNum),
-      writeUnsignedIntElement([0x73, 0xc5], this.videoTrackNum),
-      writeUnsignedIntElement([0x83], 1),
-      writeStringElement([0x86], 'V_VP9'),
-      writeElement(
-        [0xe0],
-        concatArrays([
-          writeUnsignedIntElement([0xb0], this.width),
-          writeUnsignedIntElement([0xba], this.height),
-        ]),
-      ),
-    ]);
-    return writeElement([0xae], trackEntry);
-  }
-
-  private buildAudioTrackEntry(): Uint8Array {
-    const audioElem = writeElement(
-      [0xe1],
-      concatArrays([
-        writeFloatElement([0xb5], this.sampleRate),
-        writeUnsignedIntElement([0x9f], this.channels),
-      ]),
-    );
-    const trackEntry = concatArrays([
-      writeUnsignedIntElement([0xd7], this.audioTrackNum),
-      writeUnsignedIntElement([0x73, 0xc5], this.audioTrackNum),
-      writeUnsignedIntElement([0x83], 2),
-      writeStringElement([0x86], 'A_OPUS'),
-      audioElem,
-    ]);
-    return writeElement([0xae], trackEntry);
-  }
-
-  private buildSegmentContent(): Uint8Array {
-    const hasVideo = this.videoChunks.length > 0;
-    const hasAudio = this.audioChunks.length > 0;
-
-    const allChunks = [
-      ...this.videoChunks.map((c) => ({ ...c, track: this.videoTrackNum })),
-      ...this.audioChunks.map((c) => ({ ...c, track: this.audioTrackNum, keyframe: true })),
-    ].sort((a, b) => a.timecode - b.timecode);
-
-    let maxTime = 0;
-    if (hasVideo) maxTime = Math.max(maxTime, ...this.videoChunks.map((c) => c.timecode));
-    if (hasAudio) maxTime = Math.max(maxTime, ...this.audioChunks.map((c) => c.timecode));
-    const durationMs = maxTime;
-
-    const info = this.buildInfo(durationMs);
-
-    let tracks: Uint8Array;
-    if (hasVideo && hasAudio) {
-      tracks = this.buildTracks();
-    } else if (hasVideo) {
-      tracks = writeElement([0x16, 0x54, 0xae, 0x6b], this.buildVideoTrackEntry());
-    } else {
-      tracks = writeElement([0x16, 0x54, 0xae, 0x6b], this.buildAudioTrackEntry());
-    }
-
-    const clusters = this.buildClusters(allChunks);
-
-    return concatArrays([info, tracks, ...clusters]);
-  }
-
-  private buildClusters(
-    chunks: { data: Uint8Array; track: number; timecode: number; keyframe: boolean }[],
-  ): Uint8Array[] {
-    const results: Uint8Array[] = [];
-    const CLUSTER_MAX_MS = 5000;
-
-    let i = 0;
-    while (i < chunks.length) {
-      const clusterTimecode = chunks[i].timecode;
-      const blocks: Uint8Array[] = [];
-
-      while (i < chunks.length && chunks[i].timecode - clusterTimecode < CLUSTER_MAX_MS) {
-        const c = chunks[i];
-        const relativeTimecode = c.timecode - clusterTimecode;
-
-        const flags = c.keyframe ? 0x80 : 0x00;
-        const blockHeader = new Uint8Array(4);
-        blockHeader[0] = c.track & 0xff;
-        blockHeader[1] = (relativeTimecode >> 8) & 0xff;
-        blockHeader[2] = relativeTimecode & 0xff;
-        blockHeader[3] = flags;
-
-        const blockData = concatArrays([blockHeader, c.data]);
-        blocks.push(writeElement([0xa3], blockData));
-        i++;
-      }
-
-      const timecodeBytes = writeUnsignedInt(clusterTimecode);
-      const clusterContent = concatArrays([
-        writeElement([0xe7], timecodeBytes),
-        ...blocks,
-      ]);
-      results.push(writeElement([0x1f, 0x43, 0xb6, 0x75], clusterContent));
-    }
-
-    return results;
-  }
-}
-
-// ============================================================================
-// Region Snapping & Inversion
-// ============================================================================
 
 function snapRegions(regions: CutRegion[]): CutRegion[] {
   if (regions.length === 0) return [];
@@ -356,10 +74,6 @@ function isInCutRegion(timeS: number, regions: CutRegion[]): boolean {
   return false;
 }
 
-// ============================================================================
-// Main Export Pipeline
-// ============================================================================
-
 export async function exportVideo(
   videoFile: File,
   cutRegions: CutRegion[],
@@ -385,7 +99,6 @@ export async function exportVideo(
   let blobUrl = '';
 
   try {
-    // --- Load video ---
     blobUrl = URL.createObjectURL(videoFile);
     video = document.createElement('video');
     video.src = blobUrl;
@@ -423,16 +136,25 @@ export async function exportVideo(
     totalFrames = Math.ceil(duration * estimatedFps);
     processedFrames = 0;
 
-    // Canvas for frame capture
     const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Failed to get 2D context');
 
-    // Muxer
-    const muxer = new WebMMuxer();
-    muxer.setVideoParams(width, height);
+    const target = new ArrayBufferTarget();
+    const muxer = new Muxer({
+      target,
+      video: {
+        codec: 'V_VP9',
+        width,
+        height,
+      },
+      audio: {
+        codec: 'A_OPUS',
+        sampleRate: 48000,
+        numberOfChannels: 1,
+      },
+    });
 
-    // --- Video Encoder ---
     reportProgress({
       status: 'decoding',
       progress: 0,
@@ -444,10 +166,8 @@ export async function exportVideo(
     let videoEncodeDone: (() => void) | null = null;
 
     const videoEncoder = new VideoEncoder({
-      output: (chunk) => {
-        const data = new Uint8Array(chunk.byteLength);
-        chunk.copyTo(data);
-        muxer.addVideoChunk(data, chunk.timestamp / 1000, chunk.type === 'key');
+      output: (chunk, meta) => {
+        muxer.addVideoChunk(chunk, meta);
         pendingVideoFrames--;
         if (pendingVideoFrames === 0 && videoEncodeDone) {
           videoEncodeDone();
@@ -468,11 +188,11 @@ export async function exportVideo(
       framerate: estimatedFps,
     });
 
-    // --- Process video keep segments ---
     for (let si = 0; si < keepSegments.length; si++) {
       if (videoEncodeError) throw new Error(`Video encoder: ${videoEncodeError}`);
 
       const segment = keepSegments[si];
+      const isFirstSegment = si === 0;
 
       await processKeepSegment(
         video,
@@ -481,12 +201,9 @@ export async function exportVideo(
         videoEncoder,
         segment,
         snapped,
-        () => {
-          pendingVideoFrames++;
-        },
-        () => {
-          pendingVideoFrames--;
-        },
+        isFirstSegment,
+        () => { pendingVideoFrames++; },
+        () => { pendingVideoFrames--; },
         (count) => {
           processedFrames += count;
           if (processedFrames % 30 === 0) {
@@ -502,7 +219,6 @@ export async function exportVideo(
 
     if (videoEncodeError) throw new Error(`Video encoder: ${videoEncodeError}`);
 
-    // Flush video encoder
     reportProgress({
       status: 'encoding',
       progress: totalFrames > 0 ? processedFrames / totalFrames : 0,
@@ -523,51 +239,36 @@ export async function exportVideo(
     videoEncoder.close();
     videoEncodeDone = null;
 
-    // --- Audio Pipeline ---
     reportProgress({
       status: 'encoding',
       progress: totalFrames > 0 ? Math.min(1, processedFrames / totalFrames) : 0,
       message: 'Processing audio...',
     });
 
-    await processAudio(videoFile, snapped, muxer);
+    const audioResult = await processAudio(videoFile, snapped, muxer);
+    if (!audioResult.ok) {
+      // Continue without audio — surface a warning but don't fail
+      console.warn('Audio processing skipped:', audioResult.error);
+    }
 
-    // --- Mux ---
     reportProgress({
       status: 'muxing',
-      progress: totalFrames > 0 ? Math.min(1, processedFrames / totalFrames) : 0,
+      progress: 0.95,
       message: 'Muxing output file...',
     });
 
-    await new Promise<void>((resolve) => {
-      setTimeout(() => {
-        try {
-          const webmData = muxer.finalize();
-          const blob = new Blob([webmData as unknown as BlobPart], { type: 'video/webm' });
+    await muxer.finalize();
 
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'talkcut-export.webm';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+    const webmData = target.buffer!;
+    const blob = new Blob([webmData as unknown as BlobPart], { type: 'video/webm' });
 
-          reportProgress({
-            status: 'done',
-            progress: 1,
-            message: 'Export complete',
-          });
-
-          callbacks.onComplete(blob);
-          resolve();
-        } catch (e) {
-          callbacks.onError(`Muxing failed: ${(e as Error).message}`);
-          resolve();
-        }
-      }, 50);
+    reportProgress({
+      status: 'done',
+      progress: 1,
+      message: 'Export complete',
     });
+
+    callbacks.onComplete(blob);
   } catch (e) {
     callbacks.onError((e as Error).message);
   } finally {
@@ -583,10 +284,6 @@ export async function exportVideo(
   }
 }
 
-// ============================================================================
-// Keep Segment Video Processing
-// ============================================================================
-
 async function processKeepSegment(
   video: HTMLVideoElement,
   canvas: OffscreenCanvas,
@@ -594,6 +291,7 @@ async function processKeepSegment(
   encoder: VideoEncoder,
   segment: KeepSegment,
   cutRegions: CutRegion[],
+  forceKeyframe: boolean,
   onEncodeStart: () => void,
   onEncodeError: () => void,
   onFrameCaptured: (count: number) => void,
@@ -606,6 +304,7 @@ async function processKeepSegment(
     let lastMediaTime = -1;
     let resolved = false;
     let frameCount = 0;
+    let keyframeForced = !forceKeyframe;
 
     function done(): void {
       if (resolved) return;
@@ -619,7 +318,6 @@ async function processKeepSegment(
 
       const mediaTime = metadata.mediaTime;
 
-      // Detect duplicate / stale frame
       if (Math.abs(mediaTime - lastMediaTime) < 0.0005) {
         if (video.paused || video.ended) {
           done();
@@ -630,14 +328,12 @@ async function processKeepSegment(
       }
       lastMediaTime = mediaTime;
 
-      // Check if we've passed the segment end
       if (mediaTime >= segmentEnd) {
         video.pause();
         done();
         return;
       }
 
-      // Check if frame is in a cut region
       if (isInCutRegion(mediaTime, cutRegions)) {
         video.requestVideoFrameCallback(onFrameCallback);
         return;
@@ -658,7 +354,8 @@ async function processKeepSegment(
 
       try {
         onEncodeStart();
-        encoder.encode(frame, { keyFrame: false });
+        encoder.encode(frame, { keyFrame: !keyframeForced });
+        keyframeForced = true;
         frameCount++;
         onFrameCaptured(frameCount);
       } catch {
@@ -690,26 +387,23 @@ async function processKeepSegment(
   });
 }
 
-// ============================================================================
-// Audio Pipeline
-// ============================================================================
-
 async function processAudio(
   videoFile: File,
   cutRegions: CutRegion[],
-  muxer: WebMMuxer,
-): Promise<void> {
+  muxer: Muxer<ArrayBufferTarget>,
+): Promise<{ ok: boolean; error?: string }> {
   const arrayBuffer = await videoFile.arrayBuffer();
   const audioContext = new AudioContext();
   let audioBuffer: AudioBuffer;
+
   try {
     audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-  } catch {
+  } catch (e) {
     void audioContext.close();
-    return;
+    return { ok: false, error: `Audio decode failed: ${(e as Error).message}` };
   }
-  const { sampleRate, numberOfChannels, length } = audioBuffer;
 
+  const { sampleRate, numberOfChannels, length } = audioBuffer;
   const duration = length / sampleRate;
 
   const channels: Float32Array[] = [];
@@ -718,15 +412,14 @@ async function processAudio(
   }
   void audioContext.close();
 
-  muxer.setAudioParams(sampleRate, numberOfChannels);
-
   const snapped = snapRegions(cutRegions);
   const keepSegments = invertToKeepSegments(snapped, duration);
-  if (keepSegments.length === 0) return;
+  if (keepSegments.length === 0) return { ok: true };
 
   const CHUNK_SECONDS = 1.0;
+  const outputSampleRate = 48000;
 
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<{ ok: boolean; error?: string }>((resolve) => {
     let pending = 0;
     let flushed = false;
     let encodeError: string | null = null;
@@ -734,15 +427,17 @@ async function processAudio(
     function checkDone(): void {
       if (pending === 0 && flushed) {
         audioEncoder.close();
-        resolve();
+        if (encodeError) {
+          resolve({ ok: false, error: encodeError });
+        } else {
+          resolve({ ok: true });
+        }
       }
     }
 
     const audioEncoder = new AudioEncoder({
       output: (chunk) => {
-        const data = new Uint8Array(chunk.byteLength);
-        chunk.copyTo(data);
-        muxer.addAudioChunk(data, chunk.timestamp / 1000);
+        muxer.addAudioChunk(chunk, undefined);
         pending--;
         checkDone();
       },
@@ -756,8 +451,8 @@ async function processAudio(
 
     audioEncoder.configure({
       codec: 'opus',
-      sampleRate,
-      numberOfChannels,
+      sampleRate: outputSampleRate,
+      numberOfChannels: 1,
       bitrate: 128_000,
     });
 
@@ -777,21 +472,27 @@ async function processAudio(
           const timeOffsetS = offset / sampleRate;
           const timestamp = Math.round((adjustedStartS + timeOffsetS) * 1_000_000);
 
-          const planarData = new Float32Array(frameCount * numberOfChannels);
-          for (let ch = 0; ch < numberOfChannels; ch++) {
-            planarData.set(
-              channels[ch].subarray(sampleOffset, sampleOffset + frameCount),
-              ch * frameCount,
-            );
+          let monoChunk: Float32Array;
+          if (numberOfChannels === 1) {
+            monoChunk = channels[0].subarray(sampleOffset, sampleOffset + frameCount);
+          } else {
+            monoChunk = new Float32Array(frameCount);
+            for (let i = 0; i < frameCount; i++) {
+              let sum = 0;
+              for (let ch = 0; ch < numberOfChannels; ch++) {
+                sum += channels[ch][sampleOffset + i];
+              }
+              monoChunk[i] = sum / numberOfChannels;
+            }
           }
 
           const audioData = new AudioData({
             format: 'f32-planar',
             sampleRate,
             numberOfFrames: frameCount,
-            numberOfChannels,
+            numberOfChannels: 1,
             timestamp,
-            data: planarData,
+            data: monoChunk as unknown as BufferSource,
           });
 
           pending++;
@@ -805,11 +506,7 @@ async function processAudio(
 
     audioEncoder.flush().then(() => {
       flushed = true;
-      if (encodeError) {
-        reject(new Error(`Audio encoder: ${encodeError}`));
-      } else {
-        checkDone();
-      }
+      checkDone();
     });
   });
 }

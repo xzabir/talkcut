@@ -11,32 +11,40 @@ export async function extractAudioFromVideo(
 
   const audioContext = new AudioContext();
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-  onProgress?.(0.5);
+  onProgress?.(0.4);
 
   const { numberOfChannels, length, sampleRate } = audioBuffer;
 
+  const channelData: Float32Array[] = [];
+  for (let ch = 0; ch < numberOfChannels; ch++) {
+    channelData.push(audioBuffer.getChannelData(ch));
+  }
+
   let monoData: Float32Array;
   if (numberOfChannels === 1) {
-    monoData = new Float32Array(audioBuffer.getChannelData(0));
+    monoData = new Float32Array(channelData[0]);
   } else {
     monoData = new Float32Array(length);
     for (let i = 0; i < length; i++) {
       let sum = 0;
       for (let ch = 0; ch < numberOfChannels; ch++) {
-        sum += audioBuffer.getChannelData(ch)[i];
+        sum += channelData[ch][i];
       }
       monoData[i] = sum / numberOfChannels;
     }
   }
   onProgress?.(0.6);
 
-  const duration = length / sampleRate;
-  const targetLength = Math.ceil(duration * TARGET_SAMPLE_RATE);
-
-  const audioData = resample(monoData, sampleRate, TARGET_SAMPLE_RATE, targetLength, onProgress);
-
   void audioContext.close();
 
+  const duration = length / sampleRate;
+
+  if (sampleRate === TARGET_SAMPLE_RATE) {
+    onProgress?.(1);
+    return { audioData: monoData, sampleRate: TARGET_SAMPLE_RATE, duration };
+  }
+
+  const audioData = await resampleOffline(monoData, sampleRate, onProgress);
   onProgress?.(1);
 
   return {
@@ -54,31 +62,28 @@ export async function extractAudioFromVideoElement(
   return extractAudioFromVideo(blob);
 }
 
-function resample(
+async function resampleOffline(
   input: Float32Array,
   inputSampleRate: number,
-  outputSampleRate: number,
-  outputLength: number,
-  onProgress?: (progress: number) => void,
-): Float32Array {
-  const output = new Float32Array(outputLength);
-  const ratio = inputSampleRate / outputSampleRate;
+  onProgress?: (progress: number) => void
+): Promise<Float32Array> {
+  const duration = input.length / inputSampleRate;
+  const offlineCtx = new OfflineAudioContext(1, Math.ceil(duration * TARGET_SAMPLE_RATE), TARGET_SAMPLE_RATE);
 
-  for (let i = 0; i < outputLength; i++) {
-    const position = i * ratio;
-    const index = Math.floor(position);
-    const fraction = position - index;
+  const audioBuffer = offlineCtx.createBuffer(1, input.length, inputSampleRate);
+  const copy = new Float32Array(input.length);
+  copy.set(input);
+  audioBuffer.copyToChannel(copy, 0);
 
-    if (index + 1 < input.length) {
-      output[i] = input[index] + fraction * (input[index + 1] - input[index]);
-    } else if (index < input.length) {
-      output[i] = input[index];
-    }
+  const source = offlineCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offlineCtx.destination);
+  source.start(0);
 
-    if (onProgress && i % 10000 === 0) {
-      onProgress(0.6 + 0.4 * (i / outputLength));
-    }
-  }
+  onProgress?.(0.7);
 
-  return output;
+  const rendered = await offlineCtx.startRendering();
+  onProgress?.(0.95);
+
+  return rendered.getChannelData(0).slice();
 }

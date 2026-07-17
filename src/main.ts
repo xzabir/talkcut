@@ -76,6 +76,7 @@ const cutManager = new CutManager();
 const shortcuts = new KeyboardShortcuts();
 let cutsPanel: CutsPanel | null = null;
 let exportPanel: ExportPanel | null = null;
+let modelManager: ModelManager | null = null;
 
 const videoElement = player.getVideoElement();
 videoElement.addEventListener('timeupdate', () => {
@@ -103,6 +104,7 @@ let transcriptPanel: TranscriptPanel | null = null;
 let transcribeButton: TranscribeButton | null = null;
 
 function setupUI(): void {
+  transcribeButton?.destroy();
   transcriptPanel?.destroy();
   transcriptPanelEl.innerHTML = '';
   transcriptPanelEl.style.display = 'flex';
@@ -126,7 +128,8 @@ function setupUI(): void {
   transcribeButton.mount(
     () => player.getVideoElement(),
     () => currentProject,
-    () => { /* transcript saved */ }
+    () => { /* transcript saved */ },
+    () => modelManager?.getActiveModelId() ?? 'Xenova/whisper-tiny.en',
   );
 
   const cutsPanelContainer = document.getElementById('cuts-panel')!;
@@ -154,8 +157,9 @@ function setupUI(): void {
   exportPanel.mount();
 
   const modelsPanelEl = document.getElementById('models-panel')!;
+  modelManager?.destroy();
   modelsPanelEl.innerHTML = '';
-  const modelManager = new ModelManager(modelsPanelEl);
+  modelManager = new ModelManager(modelsPanelEl);
   modelManager.mount();
 
   const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;

@@ -252,7 +252,7 @@ export class CutsPanel {
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
 
-  private fillerMatches: Array<{ word: TranscriptWord; filler: string }> = [];
+  private fillerMatches: Array<{ words: TranscriptWord[]; filler: string; start: number; end: number }> = [];
   private silenceMatches: Array<{ start: number; end: number; duration: number }> = [];
 
   private boundOnChange: ((regions: CutRegion[]) => void) | null = null;
@@ -424,8 +424,8 @@ export class CutsPanel {
         (m, i) => `
         <label class="cp-result-item">
           <input type="checkbox" class="cp-filler-check" data-index="${i}">
-          <span class="cp-result-time">${formatTime(m.word.start)}</span>
-          <span class="cp-result-label">"${escHtml(m.word.word)}"</span>
+          <span class="cp-result-time">${formatTime(m.start)}</span>
+          <span class="cp-result-label">"${escHtml(m.words.map((w) => w.word).join(' '))}"</span>
           <span class="cp-result-dur">${m.filler}</span>
         </label>
       `,
@@ -445,7 +445,7 @@ export class CutsPanel {
       if (idx < 0 || idx >= this.fillerMatches.length) return;
 
       const m = this.fillerMatches[idx];
-      this.cutManager.addRegion(m.word.start, m.word.end, 'filler', `"${m.word.word}"`);
+      this.cutManager.addRegion(m.start, m.end, 'filler', `"${m.filler}"`);
       added++;
     });
 

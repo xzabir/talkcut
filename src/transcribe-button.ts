@@ -92,6 +92,7 @@ export class TranscribeButton {
   private getVideoElement: (() => HTMLVideoElement) | null = null;
   private getProject: (() => ProjectState | null) | null = null;
   private onProjectUpdated: (() => void) | null = null;
+  private getModelId: (() => string) | null = null;
 
   private isTranscribing = false;
 
@@ -130,10 +131,12 @@ export class TranscribeButton {
     getVideoElement: () => HTMLVideoElement,
     getProject: () => ProjectState | null,
     onProjectUpdated: () => void,
+    getModelId: () => string,
   ): void {
     this.getVideoElement = getVideoElement;
     this.getProject = getProject;
     this.onProjectUpdated = onProjectUpdated;
+    this.getModelId = getModelId;
 
     this.buttonEl.disabled = false;
   }
@@ -184,6 +187,9 @@ export class TranscribeButton {
 
       const audioPct = 0.15;
       this.updateProgress(audioPct, 'Loading speech model...');
+
+      const modelId = this.getModelId?.() ?? 'Xenova/whisper-tiny.en';
+      this.service.setModelId(modelId);
 
       await this.service.ensureModel((progress, message) => {
         const displayProgress = audioPct + progress * 0.25;
