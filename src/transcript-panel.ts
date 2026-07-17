@@ -1,5 +1,6 @@
 import { saveProject } from './opfs.ts';
 import type { ProjectState, TranscriptWord } from './types.ts';
+import type { CutManager } from './cut-manager.ts';
 
 const STYLES = `
 .tp-panel {
@@ -110,6 +111,7 @@ export class TranscriptPanel {
   private getVideoEl: (() => HTMLVideoElement) | null = null;
   private getProject: (() => ProjectState | null) | null = null;
   private onSave: (() => void) | null = null;
+  private cutManager: CutManager | null = null;
 
   private activeWordIndex = -1;
   private styleEl: HTMLStyleElement;
@@ -131,10 +133,12 @@ export class TranscriptPanel {
     getVideoEl: () => HTMLVideoElement,
     getProject: () => ProjectState | null,
     onSave: () => void,
+    cutManager?: CutManager,
   ): void {
     this.getVideoEl = getVideoEl;
     this.getProject = getProject;
     this.onSave = onSave;
+    this.cutManager = cutManager || null;
 
     this.container.innerHTML = '';
     this.container.appendChild(this.el);
@@ -471,6 +475,15 @@ export class TranscriptPanel {
             end: start + (j + 1) * perToken,
             confidence,
           });
+        }
+      }
+    }
+
+    if (this.cutManager) {
+      const newStarts = new Set(newWords.map((w) => w.start.toFixed(3)));
+      for (const w of this.words) {
+        if (!newStarts.has(w.start.toFixed(3))) {
+          this.cutManager.addRegion(w.start, w.end, 'delete', `Deleted: "${w.word}"`);
         }
       }
     }

@@ -192,7 +192,7 @@ export class ModelManager {
   private root: HTMLElement | null = null;
   private mounted = false;
 
-  private activeModelId = 'Xenova/whisper-tiny.en';
+  private activeModelId = 'Xenova/whisper-base.en';
   private activeModelEl: HTMLElement | null = null;
   private modelListEl: HTMLElement | null = null;
   private noteEl: HTMLElement | null = null;

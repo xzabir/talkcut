@@ -81,8 +81,22 @@ let modelManager: ModelManager | null = null;
 const videoElement = player.getVideoElement();
 videoElement.addEventListener('timeupdate', () => {
   const time = videoElement.currentTime;
+  
+  // Skip cut regions during playback
+  if (!videoElement.paused) {
+    const regions = cutManager.getRegions();
+    for (const region of regions) {
+      // Small epsilon to prevent infinite loops if seek isn't perfect
+      if (time >= region.start && time < region.end - 0.05) {
+        player.seekTo(region.end);
+        return; // wait for next timeupdate
+      }
+    }
+  }
+
+  const currentTime = videoElement.currentTime;
   const duration = videoElement.duration;
-  waveform.setCurrentTime(time);
+  waveform.setCurrentTime(currentTime);
   if (duration) {
     waveform.setDuration(duration);
   }
@@ -122,14 +136,15 @@ function setupUI(): void {
   transcriptPanel.mount(
     () => player.getVideoElement(),
     () => currentProject,
-    () => { /* transcript saved */ }
+    () => { /* transcript saved */ },
+    cutManager
   );
 
   transcribeButton.mount(
     () => player.getVideoElement(),
     () => currentProject,
     () => { /* transcript saved */ },
-    () => modelManager?.getActiveModelId() ?? 'Xenova/whisper-tiny.en',
+    () => modelManager?.getActiveModelId() ?? 'Xenova/whisper-base.en',
   );
 
   const cutsPanelContainer = document.getElementById('cuts-panel')!;
