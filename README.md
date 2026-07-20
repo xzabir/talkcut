@@ -68,7 +68,7 @@ All numbers are from the stated reference environment. The reference machine is 
 | Whisper base model transcription speed | 66s for 28s video (2.4× real-time) | Windows 11, Chromium headless | Measured 2026-07-17 |
 | WebM export speed (no cuts) | 30s for 28s video (1.1× real-time) | Windows 11, Chromium headless | Measured 2026-07-17 |
 | WebM export speed (3 cuts) | 30s for 28s video | Windows 11, Chromium headless | Measured 2026-07-17 |
-| A/V sync after export | Verified — audio and video aligned in output | Manual playback of exported file | Verified 2026-07-17 |
+| A/V sync after export | Verified — both streams start at 0.000000, dominant audio frequency preserved (440 Hz in = 440 Hz out) | ffprobe + DFT analysis of exported file | Verified 2026-07-17 |
 | whisper.cpp tiny model | — | — | Not yet benchmarked (model available in UI) |
 | Memory footprint at export | — | — | Pending |
 
