@@ -10,7 +10,7 @@ const MODEL_REGISTRY: ModelDef[] = [
     id: 'Xenova/whisper-tiny.en',
     name: 'Tiny English',
     size: '~40 MB',
-    description: 'Fastest, less accurate',
+    description: 'Fastest, less accurate (default)',
   },
   {
     id: 'Xenova/whisper-base.en',
@@ -33,7 +33,7 @@ export class ModelManager {
   private root: HTMLElement | null = null;
   private mounted = false;
 
-  private activeModelId = 'Xenova/whisper-base.en';
+  private activeModelId = 'Xenova/whisper-tiny.en';
   private activeModelEl: HTMLElement | null = null;
   private modelListEl: HTMLElement | null = null;
   private noteEl: HTMLElement | null = null;

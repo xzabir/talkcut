@@ -137,12 +137,12 @@ export class TranscribeButton {
         this.updateProgress(displayProgress, message);
       });
 
-      this.updateProgress(0.4, 'Transcribing...');
+      this.updateProgress(0.4, 'Running Whisper inference... (this may take a while)');
 
       this.service.transcribe(audioData, sampleRate, {
         onProgress: (_status, progress, message) => {
           const displayProgress = 0.4 + progress * 0.6;
-          this.updateProgress(displayProgress, message);
+          this.updateProgress(displayProgress, message || 'Running Whisper inference...');
         },
         onComplete: (words: TranscriptWord[]) => {
           this.isTranscribing = false;

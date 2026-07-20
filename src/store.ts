@@ -15,7 +15,7 @@ const initialState: AppState = {
   },
   isTranscribing: false,
   isExporting: false,
-  activeModelId: 'Xenova/whisper-base.en',
+  activeModelId: 'Xenova/whisper-tiny.en',
   videoLoaded: false,
   videoDuration: 0,
 };

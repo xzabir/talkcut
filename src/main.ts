@@ -188,7 +188,7 @@ function setupUI(): void {
     () => player.getVideoElement(),
     () => currentProject,
     () => { /* transcript saved */ },
-    () => modelManager?.getActiveModelId() ?? 'Xenova/whisper-base.en',
+    () => modelManager?.getActiveModelId() ?? 'Xenova/whisper-tiny.en',
   );
 
   const cutsPanelContainer = document.getElementById('cuts-panel')!;
