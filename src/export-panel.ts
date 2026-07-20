@@ -124,7 +124,7 @@ export class ExportPanel {
     this.summarySection.innerHTML = `
       <div class="exp-summary-title" data-el="summary-text"></div>
       <div class="exp-summary-detail" data-el="summary-detail"></div>
-      <div class="exp-keyframe-note">Cuts are accurate to ~2-5 seconds (keyframe granularity).</div>
+      <div class="exp-keyframe-note">Cuts are applied at the frame level via per-frame re-encoding.</div>
     `;
     this.root.appendChild(this.summarySection);
     this.summaryText = this.summarySection.querySelector('[data-el="summary-text"]');

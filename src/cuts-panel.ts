@@ -70,8 +70,8 @@ export class CutsPanel {
     this.el.className = 'cp-panel';
     this.el.innerHTML = `
       <div class="cp-notice" style="display:none;">
-        <strong>Accuracy notice</strong><br>
-        Cuts are accurate to ~2-5 seconds (keyframe granularity). Frame-accurate cuts coming in a future update.
+        <strong>Cut precision</strong><br>
+        Cuts are applied at the frame level during export. The video is played segment-by-segment and each frame is re-encoded with adjusted timestamps.
       </div>
 
       <div class="cp-summary" style="display:none;">
