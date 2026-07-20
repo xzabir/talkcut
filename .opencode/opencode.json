@@ -1,0 +1,71 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "username": "scripta-builder",
+  "model": "fireworks-ai/accounts/fireworks/models/glm-5p2",
+  "default_agent": "build",
+  "skills": {
+    "paths": [".opencode/skills"]
+  },
+  "agent": {
+    "brand-strategist": {
+      "description": "Develops brand name, positioning, voice, and competitive strategy.",
+      "mode": "subagent"
+    },
+    "creative-director": {
+      "description": "Directs visual identity, design system, mood boards, and aesthetic direction.",
+      "mode": "subagent"
+    },
+    "copywriter": {
+      "description": "Writes marketing copy, headlines, CTAs, and brand narrative.",
+      "mode": "subagent"
+    },
+    "motion-designer": {
+      "description": "Creates GSAP timelines, Framer Motion animations, and Lenis smooth scroll integrations.",
+      "mode": "subagent"
+    },
+    "webgl-artist": {
+      "description": "Creates Vanta.js WebGL backgrounds, shader effects, and canvas-based visual effects.",
+      "mode": "subagent"
+    },
+    "landing-builder": {
+      "description": "Builds React landing pages with Vite, TypeScript, and modern CSS.",
+      "mode": "subagent"
+    },
+    "asset-designer": {
+      "description": "Creates SVG logos, icons, OG images, favicons, and brand assets.",
+      "mode": "subagent"
+    },
+    "seo-engineer": {
+      "description": "Optimizes SEO meta tags, Open Graph data, structured data, and social media cards.",
+      "mode": "subagent"
+    },
+    "responsive-auditor": {
+      "description": "Tests responsive layouts across viewports using Playwright.",
+      "mode": "subagent"
+    },
+    "performance-engineer": {
+      "description": "Audits web performance metrics including Lighthouse scores, bundle size, and Core Web Vitals.",
+      "mode": "subagent"
+    },
+    "deploy-engineer": {
+      "description": "Manages CI/CD pipelines, GitHub Pages deployment, and release workflows.",
+      "mode": "subagent"
+    },
+    "social-designer": {
+      "description": "Creates social media assets, share cards, and promotional visuals.",
+      "mode": "subagent"
+    },
+    "silhouette-artist": {
+      "description": "Implements silhouette double-exposure visual effects using SVG masks, CSS blend modes, and canvas compositing.",
+      "mode": "subagent"
+    },
+    "brand-guardian": {
+      "description": "Reviews and integrates all brand touchpoints for consistency.",
+      "mode": "subagent"
+    }
+  },
+  "permission": {
+    "edit": "allow",
+    "bash": { "git *": "allow", "npm *": "allow", "npx *": "allow", "node *": "allow", "*": "ask" }
+  }
+}

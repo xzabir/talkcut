@@ -31,17 +31,27 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies
+      - name: Install app dependencies
         run: npm ci
 
-      - name: Typecheck
+      - name: Typecheck app
         run: npm run typecheck
 
-      - name: Test
+      - name: Test app
         run: npm run test
 
-      - name: Build
+      - name: Build app
         run: npm run build
+
+      - name: Install landing dependencies
+        run: cd landing && npm ci --legacy-peer-deps
+
+      - name: Build landing page
+        run: cd landing && npm run build
+
+      - name: Merge landing + app into dist
+        run: |
+          cp -r landing/dist/* dist/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
